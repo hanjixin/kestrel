@@ -17,6 +17,14 @@ mod netimpl;
 #[path = "src/watchimpl.rs"]
 mod watchimpl;
 
+/// Snapshot-time stub; the real fast path lives in src/fastpath.rs.
+#[allow(dead_code)]
+mod fastpath {
+    pub fn enabled() -> bool { false }
+    pub fn start() -> bool { false }
+    pub fn register(_: std::net::TcpStream) -> bool { false }
+}
+
 /// Snapshot-time stubs for things netimpl reaches into.
 #[allow(dead_code)]
 mod runtime {

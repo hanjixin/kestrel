@@ -9,6 +9,8 @@ deno_core.workspace = true
 deno_error = "0.7"
 bytes.workspace = true
 socket2.workspace = true
+httparse = "1"
+hyper.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow.workspace = true
@@ -48,6 +50,9 @@ webpki-roots = "0.26"
 notify = "8"
 
 [dependencies]
+httparse = "1"
+httpdate = "1"
+polling = "3"
 kestrel-aot = { path = "../kestrel-aot" }
 serde = { version = "1", features = ["derive"] }
 url = "2"

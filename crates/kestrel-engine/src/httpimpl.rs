@@ -36,9 +36,37 @@ struct IsolateInfo {
 /// The request currently being handled synchronously by the trampoline. Lazy accessors
 /// (`url`, `method`, `headers`) look here first; it is moved into the pending table only
 /// when the handler goes async.
+/// A request as parsed by the fast path: materialised into `Parts` only on access.
+pub struct RawReq {
+    pub method: String,
+    pub path: String,
+    /// Request line + header block as received.
+    pub headers: Vec<u8>,
+}
+impl RawReq {
+    fn to_parts(&self) -> hyper::http::request::Parts {
+        let mut b = hyper::Request::builder().method(self.method.as_str()).uri(self.path.as_str());
+        let mut hdrs = [httparse::EMPTY_HEADER; 48];
+        let mut req = httparse::Request::new(&mut hdrs);
+        if req.parse(&self.headers).is_ok() {
+            for h in req.headers.iter() {
+                if h.name.is_empty() { break; }
+                b = b.header(h.name, h.value);
+            }
+        }
+        match b.body(()) {
+            Ok(r) => r.into_parts().0,
+            Err(_) => hyper::Request::new(()).into_parts().0,
+        }
+    }
+}
+pub enum CurrentReq {
+    Parts(hyper::http::request::Parts),
+    Raw(RawReq),
+}
 struct Current {
     id: u32,
-    parts: hyper::http::request::Parts,
+    req: CurrentReq,
 }
 thread_local! {
     static ISOLATE: RefCell<Option<IsolateInfo>> = const { RefCell::new(None) };
@@ -62,6 +90,73 @@ pub fn set_handler(scope: &mut v8::PinScope, _state: Rc<RefCell<OpState>>, f: v8
         let Some(info) = i.as_ref() else { return };
         DIRECT.with(|d| *d.borrow_mut() = Some(Rc::new(Direct { isolate: info.isolate.get(), context: info.context.clone(), trampoline, state: info.state.clone() })));
     });
+}
+
+pub enum Step {
+    Done(Outgoing),
+    Pending(oneshot::Receiver<Outgoing>),
+    Queue(IncomingReq, oneshot::Receiver<Outgoing>),
+}
+
+/// Run the JS handler for one request on this thread. Shared by the hyper path and the
+/// fast path. `body` is `None` for requests that cannot carry one.
+pub(crate) fn dispatch(req: CurrentReq, body: Option<IncomingBody>, t0: Option<std::time::Instant>) -> Step {
+    let direct = DIRECT.with(|d| d.borrow().clone());
+    let Some(d) = direct else {
+        let (rtx, rrx) = oneshot::channel();
+        let parts = match req { CurrentReq::Parts(p) => p, CurrentReq::Raw(r) => r.to_parts() };
+        let Some(body) = body else {
+            // No handler on this thread and no hyper body to queue: answer 503.
+            return Step::Done(Outgoing { status: 503, headers: String::new(), body: Bytes::from_static(b"Service Unavailable") });
+        };
+        return Step::Queue(IncomingReq { parts, body, respond: rtx, t0 }, rrx);
+    };
+    let id = {
+        let mut st = d.state.borrow_mut();
+        let hs = state_mut(&mut st);
+        let id = hs.next_req;
+        hs.next_req = hs.next_req.wrapping_add(1);
+        id
+    };
+    let has_body = body.is_some();
+    let mut body = body;
+    CURRENT.with(|c| *c.borrow_mut() = Some(Current { id, req }));
+    // SAFETY: see call_js.
+    let r = unsafe { call_js(&d, id) };
+    let cur = CURRENT.with(|c| c.borrow_mut().take());
+    match r {
+        Some(out) => {
+            if let Some(t0) = t0 {
+                let us = t0.elapsed().as_micros() as u32;
+                STATS.with(|s| { if let Some(st) = s.borrow_mut().as_mut() { st.lat_us.push(us); st.reqs += 1; st.batches += 1; } });
+            }
+            Step::Done(out)
+        }
+        None => {
+            let (rtx, rrx) = oneshot::channel();
+            let mut st = d.state.borrow_mut();
+            let hs = state_mut(&mut st);
+            match hs.pending.get_mut(&id) {
+                Some(p) => {
+                    if p.body.is_none() { p.body = body.take(); }
+                    p.has_body = has_body;
+                    if let Some(out) = p.early.take() { hs.pending.remove(&id); Step::Done(out) }
+                    else { p.respond = Some(rtx); Step::Pending(rrx) }
+                }
+                None => {
+                    let parts = match cur.map(|c| c.req) { Some(CurrentReq::Parts(p)) => p, Some(CurrentReq::Raw(r)) => r.to_parts(), None => hyper::Request::new(()).into_parts().0 };
+                    hs.pending.insert(id, Pending { parts, has_body, body: body.take(), respond: Some(rtx), early: None, answered: false, t0 });
+                    Step::Pending(rrx)
+                }
+            }
+        }
+    }
+}
+
+/// Fast-path entry: a header-only request parsed by the worker's event loop.
+pub(crate) fn dispatch_raw(raw: RawReq) -> Step {
+    let t0 = if stats_enabled() { Some(std::time::Instant::now()) } else { None };
+    dispatch(CurrentReq::Raw(raw), None, t0)
 }
 
 /// Body bytes of a V8 string: Latin-1 strings are copied byte-for-byte (valid UTF-8 when
@@ -141,6 +236,8 @@ pub struct IncomingReq {
 
 struct Pending {
     parts: hyper::http::request::Parts,
+    /// False for fast-path requests, which never carry a body.
+    has_body: bool,
     body: Option<IncomingBody>,
     respond: Option<oneshot::Sender<Outgoing>>,
     /// Response produced before the hyper task armed `respond` (handler settled during the
@@ -170,6 +267,78 @@ fn build_response(out: Outgoing) -> Response<Full<Bytes>> {
         }
     }
     resp
+}
+
+thread_local! {
+    static HYPER_TX: RefCell<Option<mpsc::Sender<IncomingReq>>> = const { RefCell::new(None) };
+}
+
+/// AsyncRead/AsyncWrite that first yields bytes already read by the fast path.
+struct Prefixed<T> {
+    inner: T,
+    prefix: Vec<u8>,
+    pos: usize,
+}
+impl<T: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Prefixed<T> {
+    fn poll_read(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &mut tokio::io::ReadBuf<'_>) -> std::task::Poll<std::io::Result<()>> {
+        if self.pos < self.prefix.len() {
+            let n = std::cmp::min(buf.remaining(), self.prefix.len() - self.pos);
+            let start = self.pos;
+            buf.put_slice(&self.prefix[start..start + n]);
+            self.pos += n;
+            return std::task::Poll::Ready(Ok(()));
+        }
+        std::pin::Pin::new(&mut self.inner).poll_read(cx, buf)
+    }
+}
+impl<T: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Prefixed<T> {
+    fn poll_write(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>, buf: &[u8]) -> std::task::Poll<std::io::Result<usize>> { std::pin::Pin::new(&mut self.inner).poll_write(cx, buf) }
+    fn poll_flush(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::pin::Pin::new(&mut self.inner).poll_flush(cx) }
+    fn poll_shutdown(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<std::io::Result<()>> { std::pin::Pin::new(&mut self.inner).poll_shutdown(cx) }
+    fn poll_write_vectored(mut self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>, bufs: &[std::io::IoSlice<'_>]) -> std::task::Poll<std::io::Result<usize>> { std::pin::Pin::new(&mut self.inner).poll_write_vectored(cx, bufs) }
+    fn is_write_vectored(&self) -> bool { self.inner.is_write_vectored() }
+}
+
+/// One request on the hyper path.
+async fn serve_one(req: Request<IncomingBody>, tx: mpsc::Sender<IncomingReq>) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    if raw_mode() {
+        let mut resp = Response::new(Full::new(Bytes::from_static(b"Hello, World!")));
+        resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("text/plain;charset=UTF-8"));
+        return Ok(resp);
+    }
+    let (parts, body) = req.into_parts();
+    let t0 = if stats_enabled() { Some(std::time::Instant::now()) } else { None };
+    // Decide synchronously (no `Rc<Direct>` may live across an await).
+    let step = dispatch(CurrentReq::Parts(parts), Some(body), t0);
+    let rrx = match step {
+        Step::Done(out) => return Ok(build_response(out)),
+        Step::Pending(rrx) => rrx,
+        Step::Queue(msg, rrx) => {
+            if tx.send(msg).await.is_err() {
+                return Ok(Response::builder().status(503).body(Full::new(Bytes::new())).unwrap());
+            }
+            rrx
+        }
+    };
+    match rrx.await {
+        Ok(out) => Ok(build_response(out)),
+        Err(_) => Ok(Response::builder().status(500).body(Full::new(Bytes::new())).unwrap()),
+    }
+}
+
+/// The fast path met a request it does not handle: continue the connection on hyper.
+pub(crate) fn hyper_takeover(std_stream: std::net::TcpStream, prefix: Vec<u8>) {
+    let Ok(stream) = tokio::net::TcpStream::from_std(std_stream) else { return };
+    let tx = HYPER_TX.with(|h| h.borrow().clone());
+    let Some(tx) = tx else { return };
+    let io = TokioIo::new(Prefixed { inner: stream, prefix, pos: 0 });
+    tokio::spawn(async move {
+        let svc = service_fn(move |req: Request<IncomingBody>| {
+            let tx = tx.clone();
+            async move { serve_one(req, tx).await }
+        });
+        let _ = hyper::server::conn::http1::Builder::new().keep_alive(true).serve_connection(io, svc).await;
+    });
 }
 
 /// Optional per-worker counters (KESTREL_HTTP_STATS=1): batches, requests, in-server latency.
@@ -319,9 +488,21 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
     let mut conns = join_hub(addr, expected_workers.max(1) as usize).map_err(|e| JsErrorBox::generic(format!("listen {addr}: {e}")))?;
 
     let (tx, rx) = mpsc::channel::<IncomingReq>(16384);
+    HYPER_TX.with(|h| *h.borrow_mut() = Some(tx.clone()));
+    let use_fast = crate::fastpath::enabled() && crate::netimpl::TLS_ACCEPTOR.with(|t| t.borrow().is_none()) && !raw_mode() && crate::fastpath::start();
     tokio::spawn(async move {
         while let Some((std_stream, live)) = conns.recv().await {
             if std_stream.set_nonblocking(true).is_err() {
+                live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                continue;
+            }
+            if use_fast {
+                // The fast loop owns the connection; the live-count guard is dropped when it closes.
+                // (Approximation: count it as closed immediately for balancing purposes after accept.)
+                if crate::fastpath::register(std_stream) {
+                    live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+                    continue;
+                }
                 live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                 continue;
             }
@@ -341,87 +522,9 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
                     None => Box::new(stream),
                 };
                 let io = TokioIo::new(io);
-                let raw = raw_mode();
                 let svc = service_fn(move |req: Request<IncomingBody>| {
                     let tx = tx.clone();
-                    async move {
-                        if raw {
-                            let mut resp = Response::new(Full::new(Bytes::from_static(b"Hello, World!")));
-                            resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("text/plain;charset=UTF-8"));
-                            return Ok::<_, hyper::Error>(resp);
-                        }
-                        let (parts, body) = req.into_parts();
-                        let t0 = if stats_enabled() { Some(std::time::Instant::now()) } else { None };
-                        // Decide synchronously (no `Rc<Direct>` may live across an await).
-                        enum Step { Done(Outgoing), Pending(oneshot::Receiver<Outgoing>), Queue(IncomingReq, oneshot::Receiver<Outgoing>) }
-                        let step = {
-                            let direct = DIRECT.with(|d| d.borrow().clone());
-                            match direct {
-                                Some(d) => {
-                                    let id = {
-                                        let mut st = d.state.borrow_mut();
-                                        let hs = state_mut(&mut st);
-                                        let id = hs.next_req;
-                                        hs.next_req = hs.next_req.wrapping_add(1);
-                                        id
-                                    };
-                                    // Body stays with the task until the handler goes async.
-                                    let mut body = Some(body);
-                                    CURRENT.with(|c| *c.borrow_mut() = Some(Current { id, parts }));
-                                    // SAFETY: see call_js.
-                                    let r = unsafe { call_js(&d, id) };
-                                    let cur = CURRENT.with(|c| c.borrow_mut().take());
-                                    match r {
-                                        Some(out) => {
-                                            if let Some(t0) = t0 {
-                                                let us = t0.elapsed().as_micros() as u32;
-                                                STATS.with(|s| { if let Some(st) = s.borrow_mut().as_mut() { st.lat_us.push(us); st.reqs += 1; st.batches += 1; } });
-                                            }
-                                            Step::Done(out)
-                                        }
-                                        None => {
-                                            // Handler went async: park the request and arm a completion channel.
-                                            let (rtx, rrx) = oneshot::channel();
-                                            let mut st = d.state.borrow_mut();
-                                            let hs = state_mut(&mut st);
-                                            match hs.pending.get_mut(&id) {
-                                                // The handler already answered (or consumed the body) during the
-                                                // microtask checkpoint: the slot was created by that op.
-                                                Some(p) => {
-                                                    if p.body.is_none() { p.body = body.take(); }
-                                                    if let Some(out) = p.early.take() { hs.pending.remove(&id); Step::Done(out) }
-                                                    else { p.respond = Some(rtx); Step::Pending(rrx) }
-                                                }
-                                                None => {
-                                                    let parts = cur.map(|c| c.parts).unwrap_or_else(|| { let (p, _) = Request::new(()).into_parts(); p });
-                                                    hs.pending.insert(id, Pending { parts, body: body.take(), respond: Some(rtx), early: None, answered: false, t0 });
-                                                    Step::Pending(rrx)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                None => {
-                                    let (rtx, rrx) = oneshot::channel();
-                                    Step::Queue(IncomingReq { parts, body, respond: rtx, t0 }, rrx)
-                                }
-                            }
-                        };
-                        let rrx = match step {
-                            Step::Done(out) => return Ok::<_, hyper::Error>(build_response(out)),
-                            Step::Pending(rrx) => rrx,
-                            Step::Queue(msg, rrx) => {
-                                if tx.send(msg).await.is_err() {
-                                    return Ok::<_, hyper::Error>(Response::builder().status(503).body(Full::new(Bytes::new())).unwrap());
-                                }
-                                rrx
-                            }
-                        };
-                        match rrx.await {
-                            Ok(out) => Ok(build_response(out)),
-                            Err(_) => Ok(Response::builder().status(500).body(Full::new(Bytes::new())).unwrap()),
-                        }
-                    }
+                    async move { serve_one(req, tx).await }
                 });
                 // No pipeline_flush: it delays flushing a response until the read side goes
                 // idle, which adds milliseconds of latency to non-pipelined clients.
@@ -480,7 +583,7 @@ pub async fn accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Vec<u32>, J
     for req in batch {
         let id = hs.next_req;
         hs.next_req = hs.next_req.wrapping_add(1);
-        hs.pending.insert(id, Pending { parts: req.parts, body: Some(req.body), respond: Some(req.respond), early: None, answered: false, t0: req.t0 });
+        hs.pending.insert(id, Pending { parts: req.parts, has_body: true, body: Some(req.body), respond: Some(req.respond), early: None, answered: false, t0: req.t0 });
         ids.push(id);
     }
     Ok(ids)
@@ -488,7 +591,12 @@ pub async fn accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Vec<u32>, J
 
 fn with_parts<R>(state: &mut OpState, id: u32, f: impl FnOnce(&hyper::http::request::Parts) -> R) -> Option<R> {
     let mut f = Some(f);
-    if let Some(r) = CURRENT.with(|c| c.borrow().as_ref().filter(|c| c.id == id).map(|c| (f.take().unwrap())(&c.parts))) {
+    if let Some(r) = CURRENT.with(|c| {
+        c.borrow().as_ref().filter(|c| c.id == id).map(|c| match &c.req {
+            CurrentReq::Parts(p) => (f.take().unwrap())(p),
+            CurrentReq::Raw(r) => { let p = r.to_parts(); (f.take().unwrap())(&p) }
+        })
+    }) {
         return Some(r);
     }
     let hs = state_mut(state);
@@ -500,7 +608,8 @@ fn with_parts<R>(state: &mut OpState, id: u32, f: impl FnOnce(&hyper::http::requ
 fn park_current(hs: &mut HttpState, id: u32) {
     let cur = CURRENT.with(|c| { let mut c = c.borrow_mut(); if c.as_ref().is_some_and(|c| c.id == id) { c.take() } else { None } });
     if let Some(c) = cur {
-        hs.pending.entry(id).or_insert(Pending { parts: c.parts, body: None, respond: None, early: None, answered: false, t0: None });
+        let (parts, has_body) = match c.req { CurrentReq::Parts(p) => (p, true), CurrentReq::Raw(r) => (r.to_parts(), false) };
+        hs.pending.entry(id).or_insert(Pending { parts, has_body, body: None, respond: None, early: None, answered: false, t0: None });
     }
 }
 
@@ -548,7 +657,7 @@ pub async fn body(state: Rc<RefCell<OpState>>, id: u32) -> Result<Vec<u8>, JsErr
             park_current(hs, id);
             let p = hs.pending.get_mut(&id).ok_or_else(|| JsErrorBox::type_error("request body already consumed"))?;
             if let Some(b) = p.body.take() { break Some(b); }
-            if p.answered { break None; }
+            if p.answered || !p.has_body { break None; }
         }
         BODY_WAIT.with(|w| w.set(true));
         tokio::task::yield_now().await;
