@@ -41,10 +41,12 @@ Verified by `test/compat` (each file runs under node and kestrel and the outputs
 - `worker.mjs`: `worker_threads.Worker` with `workerData`, `postMessage` both ways, `process.exit` code in the worker. Identical.
 - `https.mjs`: `https.createServer` with a self-signed key/cert served by rustls, consumed by `fetch`. Identical.
 - `http.mjs`, `serve.ts`: `http.createServer` request/response with bodies and headers, `http.get`, `fetch`, `Kestrel.serve` with JSON, byte bodies, custom headers, sync and async handlers.
+- `http2.mjs`: `http2.createSecureServer` (ALPN `h2`) with the stream API (`'stream'`, `respond`) and the compatibility API (`'request'`, `httpVersion` 2.0, pseudo-headers), `http2.createServer` (h2c prior knowledge), `http2.connect` client with GET and POST bodies, settings packing, constants, errors after `close()`. Identical.
+- `vmmod.mjs`: `vm.SourceTextModule` and `vm.SyntheticModule` (link with dependencies and cycles-safe recursion, evaluate, namespace, status, error, contexts) and `node:inspector` / `inspector/promises` sessions (`Runtime.evaluate`, `Profiler.start/stop`, error and disconnect behaviour). Identical to Node run with `--experimental-vm-modules`.
 - `esm.mjs`, `npm.mjs`, `realworld.cjs`: ESM ↔ CommonJS interop (both directions, including `require(esm)`), and unmodified packages from a real `node_modules`: marked, nanoid, jszip, pako, hash.js, is-url, inherits, docx, pptxgenjs, pdf-lib, pngjs, jpeg-js, image-size.
 - Scheduling order of `process.nextTick`, microtasks, `setImmediate` and timers matches Node.
 
-Builtins: assert, async_hooks (`AsyncLocalStorage`, `AsyncResource`; `createHook` is a no-op), buffer, child_process (incl. `fork` IPC), cluster (processes sharing a port via `SO_REUSEPORT`), constants, crypto (hashes, HMAC, KDFs, AES/ChaCha ciphers, RSA/ECDSA sign/verify and key pairs, webcrypto subset), dgram (+multicast), dns, events, fs (+promises, fd API, streams, `watch`/`watchFile`), http, https, inspector (stub: `Session` connects but emits no events, `url()` is `undefined`), module, net (TCP + Unix sockets), os, path, perf_hooks, process, querystring, readline, stream, string_decoder, sys, timers, tls (client and server), tty, url, util, v8 (heap statistics, serialize), vm (scripts in this or a fresh context), worker_threads, zlib (+brotli). Not supported by design: native addons (`.node`/N-API). Still missing and throwing `ERR_METHOD_NOT_IMPLEMENTED`: `http2`, `vm` module-linking APIs (`SourceTextModule`).
+Builtins: assert, async_hooks (`AsyncLocalStorage`, `AsyncResource`; `createHook` is a no-op), buffer, child_process (incl. `fork` IPC), cluster (processes sharing a port via `SO_REUSEPORT`), constants, crypto (hashes, HMAC, KDFs, AES/ChaCha ciphers, RSA/ECDSA sign/verify and key pairs, webcrypto subset), dgram (+multicast), dns, events, fs (+promises, fd API, streams, `watch`/`watchFile`), http, http2 (servers over TLS/ALPN and h2c, client, stream and compatibility APIs; no server push, one request per stream), https, inspector (in-process CDP sessions: Runtime, Debugger, Profiler, HeapProfiler; no WebSocket listener, so `inspector.open()` cannot be attached to), module, net (TCP + Unix sockets), os, path, perf_hooks, process, querystring, readline, stream, string_decoder, sys, timers, tls (client and server), tty, url, util, v8 (heap statistics, serialize), vm (scripts in this or a fresh context, `SourceTextModule`, `SyntheticModule`; no `importModuleDynamically`), worker_threads, zlib (+brotli). Not supported by design: native addons (`.node`/N-API).
 
 ## Measurements
 
@@ -72,8 +74,8 @@ HTTP hello world, `wrk -t2 -c256`, client and server on the same machine (`bench
 |---|---|---|---|
 | node 22, 1 process | 132 k | 1.94 ms | 7.0 ms |
 | node 22 cluster, 10 processes | 229 k | 0.58 ms | 4.7 ms |
-| bun 1.3, 1 process | 280 k | 0.89 ms | 1.72 ms |
-| kestrel, 1 worker thread | 308 k | 0.82 ms | 1.04 ms |
+| bun 1.3, 1 process | 275 k | 0.90 ms | 1.76 ms |
+| kestrel, 1 worker thread | 299 k | 0.79 ms | 2.56 ms |
 
 Same, `wrk -t2 -c4096`:
 
@@ -81,8 +83,8 @@ Same, `wrk -t2 -c4096`:
 |---|---|---|---|
 | node 22, 1 process | 115 k | 16.2 ms | 463 ms |
 | node 22 cluster, 10 processes | 202 k | 19.2 ms | 26.5 ms |
-| bun 1.3, 1 process | 226 k | 17.3 ms | 22.2 ms |
-| kestrel, 1 worker thread | 242 k | 16.5 ms | 18.6 ms |
+| bun 1.3, 1 process | 216 k | 17.0 ms | 42.3 ms |
+| kestrel, 1 worker thread | 232 k | 16.0 ms | 20.6 ms |
 
 ### Linux x86_64, AMD EPYC 7542 (128 vCPU), Ubuntu 22.04, 2026-10-16
 
@@ -91,17 +93,17 @@ Servers and `wrk` on the same host over loopback (the inter-node link of the tes
 | server | 256 connections (`-t8`) | 4096 connections (`-t32`) |
 |---|---|---|
 | node, 1 process | 38 k (p99 390 ms) | 32 k (p99 34–37 ms, 330–350 timeouts) |
-| bun, 1 process | 83–85 k (p99 4.7–5.7 ms) | 57–58 k (p99 94–245 ms) |
-| kestrel, 1 worker thread | 94–99 k (p99 4.9–5.2 ms) | 57–59 k (p99 73–78 ms) |
+| bun, 1 process | 74–85 k (p99 4.1–5.7 ms) | 55–58 k (p99 94–245 ms) |
+| kestrel, 1 worker thread | 92–99 k (p99 4.9–5.4 ms) | 57–62 k (p99 73–78 ms) |
 | node cluster, 128 processes | 396–409 k | 851 k (p99 28–33 ms) |
-| bun `reusePort`, 128 processes (its default) | 459–465 k | 1.34–1.37 M (p99 2.9–3.0 ms) |
+| bun `reusePort`, 128 processes (its default) | 456–469 k (p99 0.58 ms) | 1.30–1.37 M (p99 2.9–3.1 ms) |
 | bun `reusePort`, 32 processes (its best) | 483 k | 1.60 M (p99 5.3 ms) |
-| kestrel, 128 worker threads, one process | 413–416 k | 1.20–1.23 M (p99 3.4–4.0 ms) |
-| kestrel, 64 worker threads (`workers: "auto"` = physical cores) | 430–444 k | 1.47–1.50 M (p99 2.5–2.9 ms) |
-| kestrel, 32 worker threads (its best) | 457–466 k | 1.56–1.64 M (p99 3.6–57 ms) |
+| kestrel, default (`workers: "auto"` = 64 physical cores, packed accept) | 506–510 k (p99 0.53–0.55 ms) | 1.44–1.47 M (p99 2.6–3.3 ms) |
+| kestrel, 128 worker threads, evenly spread (old default) | 413–416 k | 1.20–1.23 M |
+| kestrel, 32 worker threads | 457–466 k | 1.56–1.64 M |
 | kestrel raw hyper, no JS, 128 threads | 440 k | 1.39–1.40 M |
 
-The host runs the load generator too (32 `wrk` threads on 128 vCPUs, 2 sockets, 8 NUMA nodes), so one server thread or process per vCPU is past the knee for both runtimes; the sweep is in `bench/remote/sweep2.sh`. kestrel's `"auto"` now means physical cores.
+The host runs the load generator too (32 `wrk` threads on 128 vCPUs, 2 sockets, 8 NUMA nodes), so one server thread or process per vCPU is past the knee for both runtimes (`bench/remote/sweep2.sh`). Two defaults follow from that: `"auto"` means physical cores, and the acceptor packs connections onto as few workers as needed (up to 16 each, `KESTREL_PACK`) before spreading, so a few hundred mostly idle keep-alive connections do not wake 64 threads.
 
 The single-worker tail at 4096 connections is dominated by the first second, when all connections arrive at once: over a 3 s run kestrel's p99 is 133 ms (max 170 ms) against Bun's 605 ms (max 960 ms); over 30 s both settle at 76 ms vs 82 ms.
 
@@ -111,8 +113,9 @@ What this says, honestly:
 
 - Startup and memory beat Node and Bun.
 - The native tier beats V8 on call-heavy and integer-heavy code (1.6× and 1.5×; 2.8× over Node on the cold benchmark). On float loops V8's TurboFan is already at the hardware's latency floor and the native tier ties it.
-- HTTP per core: 10 % ahead of Bun on macOS at 256 and 4096 connections, 12–16 % ahead on Linux at 256 connections and level with it at 4096, with a lower p99 everywhere. `perf` on the Linux node shows 85 % of the time in the kernel's TCP/epoll paths and an in-server latency max of 300 µs, so per-core HTTP is syscall-bound; the fast path got there by doing one `read` and one `write` per request. About 2.5× Node per core on Linux, 1.8–2.3× on macOS.
-- HTTP on all cores: with its default worker count (64, physical cores) one kestrel process serves 1.75× a 128-process Node cluster and 1.1× Bun's documented 128-process `reusePort` setup at 4096 connections (1.47–1.50 M vs 1.34–1.37 M, with a lower p99), and 0.93× of it at 256 connections (430–444 k vs 459–465 k, where 2–4 mostly idle connections per thread make a smaller thread count better for both). Tuned against each other (32 threads vs 32 processes) the two tie at about 1.6 M. Per-core HTTP is kernel-bound on both, so parity at the all-cores level is the ceiling of this I/O model; moving past Bun there would need an `io_uring` backend. The old comparison in which 128 kestrel threads trailed 128 Bun processes by 10 % still holds at that setting.
+- HTTP per core: 7–9 % ahead of Bun on macOS at 256 and 4096 connections, 10–25 % ahead on Linux at 256 connections and 3–7 % ahead at 4096, with a lower p99 everywhere (at 4096 connections a third of Bun's). `perf` on the Linux node shows 85 % of the time in the kernel's TCP/epoll paths and an in-server latency max of 300 µs, so per-core HTTP is syscall-bound; the fast path got there by doing one `read` and one `write` per request. About 2.5× Node per core on Linux, 1.8–2.3× on macOS.
+- HTTP on all cores: with its defaults one kestrel process serves 1.25× a 128-process Node cluster and 1.09× Bun's documented 128-process `reusePort` setup at 256 connections, and 1.7× Node and 1.11× Bun at 4096 connections, with an equal or lower p99. Tuned against each other (32 threads vs 32 processes) the two land within a few percent at about 1.6 M, because per-core HTTP is kernel-bound on both (`perf`: 87 % of cycles in the kernel's TCP, epoll and conntrack paths at 32 workers); moving clearly past that would need an `io_uring` backend.
+- HTTP per core on macOS: the level-triggered kqueue loop is only 5 % faster than the hyper path there (299 k vs 286 k) and has a slightly longer tail at 256 connections; both are ahead of Bun.
 
 ## Layout
 
