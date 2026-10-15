@@ -31,8 +31,12 @@ impl Runtime {
             extensions: vec![ops::kestrel::init()],
             startup_snapshot: Some(SNAPSHOT),
             create_params: Some(params),
+            // In-process `node:inspector` sessions (CDP over deno_core's local session).
+            inspector: true,
+            is_main: crate::httpimpl::worker_id() == 0,
             ..Default::default()
         });
+        js.op_state().borrow_mut().put(crate::netimpl::InspectorHandle(js.inspector()));
         // Let the HTTP backend call into this isolate directly from its tasks.
         let context = js.main_context();
         let state = js.op_state();

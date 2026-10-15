@@ -22,6 +22,8 @@ const READ_CHUNK: usize = 16 * 1024;
 const MAX_HEADER: usize = 64 * 1024;
 
 struct Conn {
+    /// Server (listen call) this connection belongs to; selects the JS handler.
+    rid: u32,
     /// Live-connection counter of this worker (for least-loaded accept); decremented on drop.
     live: Option<Arc<std::sync::atomic::AtomicUsize>>,
     stream: std::net::TcpStream,
@@ -45,17 +47,23 @@ struct Fast {
     /// tokio's inject queue, which the current-thread scheduler consults only every 31
     /// ticks, and that left freshly accepted connections unserved for up to a second
     /// under load (measured: first-second p99 of 700 ms at 4096 connections).
-    rxs: Vec<httpimpl::ConnRx>,
+    rxs: Vec<(u32, httpimpl::ConnRx)>,
     new_rx: Arc<tokio::sync::Notify>,
 }
 
-type Accepted = (std::net::TcpStream, Arc<std::sync::atomic::AtomicUsize>);
+type Accepted = (u32, std::net::TcpStream, Arc<std::sync::atomic::AtomicUsize>);
 
 /// Hand a port's connection receiver to this worker's fast loop. Returns false if the loop
 /// is not running (the caller then serves the receiver itself).
-pub fn adopt(rx: httpimpl::ConnRx) -> bool {
+fn flog(msg: impl FnOnce() -> String) {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    if *ON.get_or_init(|| std::env::var("KESTREL_FAST_LOG").is_ok()) { eprintln!("[fast w{}] {}", httpimpl::worker_id(), msg()); }
+}
+
+pub fn adopt(rid: u32, rx: httpimpl::ConnRx) -> bool {
+    flog(|| format!("adopt rid={rid}"));
     with_fast(|fast| {
-        fast.rxs.push(rx);
+        fast.rxs.push((rid, rx));
         fast.new_rx.notify_one();
     })
     .is_some()
@@ -67,8 +75,9 @@ fn recv_any() -> impl std::future::Future<Output = Accepted> {
         with_fast(|fast| {
             let mut i = 0;
             while i < fast.rxs.len() {
-                match fast.rxs[i].poll_recv(cx) {
-                    std::task::Poll::Ready(Some(x)) => return std::task::Poll::Ready(x),
+                let rid = fast.rxs[i].0;
+                match fast.rxs[i].1.poll_recv(cx) {
+                    std::task::Poll::Ready(Some((s, l))) => return std::task::Poll::Ready((rid, s, l)),
                     std::task::Poll::Ready(None) => {
                         fast.rxs.swap_remove(i);
                     }
@@ -85,8 +94,9 @@ fn try_recv_any() -> Option<Accepted> {
     with_fast(|fast| {
         let mut i = 0;
         while i < fast.rxs.len() {
-            match fast.rxs[i].try_recv() {
-                Ok(x) => return Some(x),
+            let rid = fast.rxs[i].0;
+            match fast.rxs[i].1.try_recv() {
+                Ok((s, l)) => return Some((rid, s, l)),
                 Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
                     fast.rxs.swap_remove(i);
                 }
@@ -98,8 +108,9 @@ fn try_recv_any() -> Option<Accepted> {
     .flatten()
 }
 
-fn register_accepted((stream, live): Accepted) {
-    if !register(stream, live.clone()) {
+fn register_accepted((rid, stream, live): Accepted) {
+    flog(|| format!("register rid={rid}"));
+    if !register(rid, stream, live.clone()) {
         live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
@@ -136,8 +147,18 @@ pub fn start() -> bool {
     let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel::<(usize, u32, Outgoing)>();
     let new_rx = Arc::new(tokio::sync::Notify::new());
     let fast = Rc::new(RefCell::new(Fast { poller: poller.clone(), conns: Vec::new(), free: Vec::new(), done_tx, rxs: Vec::new(), new_rx: new_rx.clone() }));
+    // Register the loop only once its driver handle exists: a half-started loop would make
+    // later `start()` calls report success and swallow every adopted connection.
+    // Readable interest only: kqueue rejects EVFILT_WRITE on a kqueue fd (EINVAL), which is
+    // what registering with the default read+write interest does on macOS.
+    let afd = match tokio::io::unix::AsyncFd::with_interest(PollFd(poller.as_raw_fd()), tokio::io::Interest::READABLE) {
+        Ok(a) => a,
+        Err(e) => {
+            flog(|| format!("fast loop unavailable: {e}"));
+            return false;
+        }
+    };
     FAST.with(|f| *f.borrow_mut() = Some(fast));
-    let Ok(afd) = tokio::io::unix::AsyncFd::new(PollFd(poller.as_raw_fd())) else { return false };
     tokio::spawn(async move {
         let mut events = Events::new();
         // True while the poller may still hold ready events we have not served. Under
@@ -209,7 +230,7 @@ impl Drop for Conn {
 }
 
 /// Register an accepted connection with this worker's fast loop.
-pub fn register(stream: std::net::TcpStream, live: Arc<std::sync::atomic::AtomicUsize>) -> bool {
+pub fn register(rid: u32, stream: std::net::TcpStream, live: Arc<std::sync::atomic::AtomicUsize>) -> bool {
     FAST.with(|f| {
         let f = f.borrow();
         let Some(fast) = f.as_ref() else { return false };
@@ -231,7 +252,7 @@ pub fn register(stream: std::net::TcpStream, live: Arc<std::sync::atomic::Atomic
             fast.free.push(key);
             return false;
         }
-        fast.conns[key] = Some(Conn { live: Some(live), stream, rbuf: Vec::with_capacity(READ_CHUNK), wbuf: Vec::new(), waiting: false, close_after: false, want_write: false, gen });
+        fast.conns[key] = Some(Conn { rid, live: Some(live), stream, rbuf: Vec::with_capacity(READ_CHUNK), wbuf: Vec::new(), waiting: false, close_after: false, want_write: false, gen });
         true
     })
 }
@@ -316,6 +337,18 @@ fn process_buffer(conn: &mut Conn, key: usize) -> bool {
         if conn.waiting || conn.rbuf.is_empty() {
             break;
         }
+        // HTTP/2 prior knowledge (h2c): hand the whole connection to hyper.
+        const H2_PREFACE: &[u8] = b"PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n";
+        if conn.rbuf.starts_with(&H2_PREFACE[..conn.rbuf.len().min(H2_PREFACE.len())]) {
+            if conn.rbuf.len() < H2_PREFACE.len() {
+                break; // need more bytes to be sure
+            }
+            let rest = conn.rbuf.split_off(0);
+            if let Some(stream) = take_stream(conn) {
+                httpimpl::hyper_takeover(conn.rid, stream, rest);
+            }
+            return false;
+        }
         let mut headers = [httparse::EMPTY_HEADER; 48];
         let mut req = httparse::Request::new(&mut headers);
         let parsed = match req.parse(&conn.rbuf) {
@@ -360,7 +393,7 @@ fn process_buffer(conn: &mut Conn, key: usize) -> bool {
             // Hand the connection to hyper with the unread bytes.
             let rest = conn.rbuf.split_off(0);
             if let Some(stream) = take_stream(conn) {
-                httpimpl::hyper_takeover(stream, rest);
+                httpimpl::hyper_takeover(conn.rid, stream, rest);
             }
             return false;
         }
@@ -370,7 +403,8 @@ fn process_buffer(conn: &mut Conn, key: usize) -> bool {
             headers: conn.rbuf[..parsed].to_vec(),
         };
         conn.rbuf.drain(..parsed);
-        let step = httpimpl::dispatch_raw(raw);
+        flog(|| format!("dispatch rid={} {}", conn.rid, raw.path));
+        let step = httpimpl::dispatch_raw(conn.rid, raw);
         match step {
             Step::Done(out) => {
                 queue_response(conn, out, close_after);
@@ -485,6 +519,7 @@ fn queue_response(conn: &mut Conn, out: Outgoing, close: bool) {
     if !out.headers.is_empty() {
         let mut it = out.headers.split('\0');
         while let (Some(k), Some(v)) = (it.next(), it.next()) {
+            if k.is_empty() { continue; }
             if k.eq_ignore_ascii_case("content-type") { has_ct = true; }
             if k.eq_ignore_ascii_case("content-length") { has_cl = true; }
             if k.eq_ignore_ascii_case("transfer-encoding") { continue; }

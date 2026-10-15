@@ -27,7 +27,7 @@ export class Server extends NetServer {
     if (typeof options === "function") { listener = options; options = {}; }
     super(options);
     const pem = (v) => (v == null ? "" : typeof v === "string" ? v : new TextDecoder().decode(v));
-    ops.op_tls_server_config(pem(options.cert), pem(options.key));
+    ops.op_tls_server_config(pem(options.cert), pem(options.key), Array.isArray(options.ALPNProtocols) ? options.ALPNProtocols.join(",") : "");
     if (listener) this.on("secureConnection", listener);
     this._wrapConnection = async (rid) => {
       try { await ops.op_tls_accept(rid); } catch (e) { ops.op_net_close(rid); this.emit("tlsClientError", e); return null; }
@@ -38,7 +38,7 @@ export class Server extends NetServer {
       return sock;
     };
   }
-  setSecureContext(o) { const pem = (v) => (v == null ? "" : typeof v === "string" ? v : new TextDecoder().decode(v)); ops.op_tls_server_config(pem(o.cert), pem(o.key)); }
+  setSecureContext(o) { const pem = (v) => (v == null ? "" : typeof v === "string" ? v : new TextDecoder().decode(v)); ops.op_tls_server_config(pem(o.cert), pem(o.key), ""); }
   addContext() {}
 }
 export function createServer(options, listener) { return new Server(options, listener); }

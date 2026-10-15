@@ -64,7 +64,8 @@ function rmaybeEnd(self) {
   const st = self._readableState;
   if (st.ended && st.buffer.length === 0 && !st.endEmitted) {
     st.endEmitted = true; self.readable = false;
-    queueMicrotask(() => { self.emit("end"); if (!st.destroyed) { st.destroyed = true; self.emit("close"); } });
+    // A Duplex stays alive until its writable side has finished too (Node's autoDestroy).
+    queueMicrotask(() => { self.emit("end"); if (!st.destroyed && !(self._writableState && !self._writableState.finished)) { st.destroyed = true; self.emit("close"); } });
   }
 }
 Object.defineProperties(Readable.prototype, {

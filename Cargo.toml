@@ -24,8 +24,8 @@ cranelift-module = "0.137.0-rc.1"
 cranelift-native = "0.137.0-rc.1"
 cranelift-codegen = "0.137.0-rc.1"
 cranelift-frontend = "0.137.0-rc.1"
-hyper = { version = "1", features = ["server", "http1"] }
-hyper-util = { version = "0.1", features = ["tokio"] }
+hyper = { version = "1", features = ["server", "http1", "http2"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto", "http1", "http2"] }
 http-body-util = "0.1"
 bytes = "1"
 socket2 = { version = "0.5", features = ["all"] }

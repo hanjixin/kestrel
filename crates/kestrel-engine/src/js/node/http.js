@@ -65,8 +65,8 @@ export class ServerResponse extends OutgoingMessage {
     const body = Buffer.concat(this._chunks);
     const parts = [];
     for (const [k, v] of this._headers) { if (Array.isArray(v)) for (const x of v) parts.push(k, String(x)); else parts.push(k, String(v)); }
-    if (!this._headers.has("content-type")) parts.push("content-type", "text/plain;charset=UTF-8");
-    this._respond(this.statusCode, parts.join("\0"), body);
+    // Node sends no default content-type; "\0" tells the runtime "no headers at all".
+    this._respond(this.statusCode, parts.length ? parts.join("\0") : "\0", body);
   }
 }
 

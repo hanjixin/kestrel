@@ -59,8 +59,8 @@ pub async fn op_kestrel_http_accept(state: Rc<RefCell<OpState>>, rid: u32) -> Re
 }
 
 #[op2(fast)]
-pub fn op_kestrel_http_set_handler(scope: &mut v8::PinScope, state: Rc<RefCell<OpState>>, f: v8::Local<v8::Function>) {
-    super::httpimpl::set_handler(scope, state, f)
+pub fn op_kestrel_http_set_handler(scope: &mut v8::PinScope, state: Rc<RefCell<OpState>>, rid: u32, f: v8::Local<v8::Function>) {
+    super::httpimpl::set_handler(scope, state, rid, f)
 }
 
 #[op2]
@@ -123,6 +123,31 @@ pub fn op_kestrel_http_headers(state: &mut OpState, id: u32) -> String {
     super::httpimpl::headers(state, id)
 }
 
+#[op2]
+#[serde]
+pub async fn op_kestrel_fetch_h2(
+    state: Rc<RefCell<OpState>>,
+    #[string] url: String,
+    #[string] method: String,
+    #[serde] headers: Vec<(String, String)>,
+    #[buffer(copy)] body: Vec<u8>,
+    has_body: bool,
+    insecure: bool,
+) -> Result<super::fetchimpl::FetchResp, deno_error::JsErrorBox> {
+    super::fetchimpl::fetch_opts(state, url, method, headers, if has_body { Some(body) } else { None }, true, true, insecure).await
+}
+
+#[op2(fast)]
+pub fn op_kestrel_http_port(state: &mut OpState, rid: u32) -> u16 {
+    super::httpimpl::port(state, rid)
+}
+
+/// 10, 11, 2 or 3 for HTTP/1.0, 1.1, 2, 3.
+#[op2(fast)]
+pub fn op_kestrel_http_version(state: &mut OpState, id: u32) -> u32 {
+    super::httpimpl::version(state, id)
+}
+
 #[op2(fast)]
 pub fn op_kestrel_spawn_workers(n: u32) -> Result<(), deno_error::JsErrorBox> {
     super::httpimpl::spawn_workers(n)
@@ -177,7 +202,7 @@ deno_core::extension!(
     ops = [
         op_kestrel_exit, op_kestrel_cwd, op_kestrel_v8_version,
         op_kestrel_http_listen, op_kestrel_http_accept, op_kestrel_http_respond, op_kestrel_http_respond_bytes,
-        op_kestrel_http_body, op_kestrel_http_headers, op_kestrel_http_method, op_kestrel_http_url, op_kestrel_http_set_handler, op_kestrel_fetch,
+        op_kestrel_http_body, op_kestrel_http_headers, op_kestrel_http_method, op_kestrel_http_url, op_kestrel_http_set_handler, op_kestrel_fetch, op_kestrel_fetch_h2, op_kestrel_http_version, op_kestrel_http_port,
         op_kestrel_spawn_workers, op_kestrel_worker_id, op_kestrel_cpus,
         super::nodeimpl::op_k_fs_read_text, super::nodeimpl::op_k_fs_read_bytes, super::nodeimpl::op_k_fs_write_bytes,
         super::nodeimpl::op_k_fs_write_text, super::nodeimpl::op_k_fs_stat, super::nodeimpl::op_k_fs_exists,
@@ -203,7 +228,7 @@ deno_core::extension!(
         super::procimpl::op_keygen, super::procimpl::op_key_info, super::procimpl::op_sign, super::procimpl::op_verify,
         super::netimpl::op_net_connect, super::netimpl::op_net_read, super::netimpl::op_net_write, super::netimpl::op_net_shutdown,
         super::netimpl::op_net_close, super::netimpl::op_net_addr, super::netimpl::op_net_listen, super::netimpl::op_net_listen_addr,
-        super::netimpl::op_net_accept, super::netimpl::op_net_close_listener, super::netimpl::op_tls_server_config,
+        super::netimpl::op_net_accept, super::netimpl::op_net_close_listener, super::netimpl::op_tls_server_config, super::netimpl::op_tls_server_clear,
         super::netimpl::op_tls_connect, super::netimpl::op_tls_read, super::netimpl::op_tls_write, super::netimpl::op_tls_shutdown, super::netimpl::op_tls_close,
         super::netimpl::op_worker_info, super::netimpl::op_worker_spawn, super::netimpl::op_worker_post, super::netimpl::op_worker_recv,
         super::netimpl::op_worker_exit_code, super::netimpl::op_worker_terminate, super::netimpl::op_worker_parent_post,
@@ -212,6 +237,10 @@ deno_core::extension!(
         super::watchimpl::op_fs_watch, super::watchimpl::op_fs_watch_next, super::watchimpl::op_fs_unwatch,
         super::netimpl::op_udp_bind, super::netimpl::op_udp_send, super::netimpl::op_udp_recv, super::netimpl::op_udp_addr, super::netimpl::op_udp_close, super::netimpl::op_udp_multicast,
         super::netimpl::op_v8_heap_stats, super::netimpl::op_vm_run_in_this_context, super::netimpl::op_vm_run_in_new_context,
+        super::netimpl::op_vm_module_compile, super::netimpl::op_vm_module_requests, super::netimpl::op_vm_module_link, super::netimpl::op_vm_module_instantiate,
+        super::netimpl::op_vm_module_evaluate, super::netimpl::op_vm_module_status, super::netimpl::op_vm_module_namespace, super::netimpl::op_vm_module_error,
+        super::netimpl::op_vm_synthetic_create, super::netimpl::op_vm_synthetic_set_export,
+        super::netimpl::op_inspector_connect, super::netimpl::op_inspector_post, super::netimpl::op_inspector_take, super::netimpl::op_inspector_recv, super::netimpl::op_inspector_disconnect,
         op_kestrel_call0, op_kestrel_call1, op_kestrel_call2, op_kestrel_call3,
         op_kestrel_call4, op_kestrel_call5, op_kestrel_call6,
     ],
@@ -221,5 +250,5 @@ deno_core::extension!(
         "node/fs.js", "node/fs_promises.js", "node/http.js", "node/https.js", "node/module.js", "node/net.js",
         "node/os.js", "node/path.js", "node/path_posix.js", "node/process.js", "node/querystring.js",
         "node/readline.js", "node/stream.js", "node/string_decoder.js", "node/timers.js", "node/timers_promises.js",
-        "node/tty.js", "node/url.js", "node/util.js", "node/util_types.js", "node/worker_threads.js", "node/zlib.js", "node/tls.js", "node/dns.js", "node/dns_promises.js", "node/dgram.js", "node/perf_hooks.js", "node/v8.js", "node/vm.js", "node/cluster.js", "node/constants.js", "node/sys.js", "node/async_hooks.js", "node/inspector.js"],
+        "node/tty.js", "node/url.js", "node/util.js", "node/util_types.js", "node/worker_threads.js", "node/zlib.js", "node/tls.js", "node/dns.js", "node/dns_promises.js", "node/dgram.js", "node/perf_hooks.js", "node/v8.js", "node/vm.js", "node/cluster.js", "node/constants.js", "node/sys.js", "node/async_hooks.js", "node/inspector.js", "node/inspector_promises.js", "node/http2.js"],
 );

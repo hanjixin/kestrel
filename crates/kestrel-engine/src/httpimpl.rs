@@ -70,7 +70,8 @@ struct Current {
 }
 thread_local! {
     static ISOLATE: RefCell<Option<IsolateInfo>> = const { RefCell::new(None) };
-    static DIRECT: RefCell<Option<Rc<Direct>>> = const { RefCell::new(None) };
+    /// Per server id: each `Kestrel.serve` / `http.createServer` on this thread has its own handler.
+    static DIRECT: RefCell<HashMap<u32, Rc<Direct>>> = RefCell::new(HashMap::new());
     static CURRENT: RefCell<Option<Current>> = const { RefCell::new(None) };
 }
 
@@ -83,13 +84,19 @@ pub fn init_thread_isolate(isolate: &v8::Isolate, context: v8::Global<v8::Contex
 }
 
 /// Registers the JS trampoline `(id) => [status, headers, body] | undefined`.
-pub fn set_handler(scope: &mut v8::PinScope, _state: Rc<RefCell<OpState>>, f: v8::Local<v8::Function>) {
+pub fn set_handler(scope: &mut v8::PinScope, _state: Rc<RefCell<OpState>>, rid: u32, f: v8::Local<v8::Function>) {
     let trampoline = v8::Global::new(scope, f);
     ISOLATE.with(|i| {
         let i = i.borrow();
         let Some(info) = i.as_ref() else { return };
-        DIRECT.with(|d| *d.borrow_mut() = Some(Rc::new(Direct { isolate: info.isolate.get(), context: info.context.clone(), trampoline, state: info.state.clone() })));
+        DIRECT.with(|d| d.borrow_mut().insert(rid, Rc::new(Direct { isolate: info.isolate.get(), context: info.context.clone(), trampoline, state: info.state.clone() })));
     });
+}
+
+/// `KESTREL_FAST_LOG=1`: trace connection hand-off and dispatch (debugging aid).
+pub(crate) fn fast_log() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("KESTREL_FAST_LOG").is_ok())
 }
 
 pub enum Step {
@@ -100,8 +107,9 @@ pub enum Step {
 
 /// Run the JS handler for one request on this thread. Shared by the hyper path and the
 /// fast path. `body` is `None` for requests that cannot carry one.
-pub(crate) fn dispatch(req: CurrentReq, body: Option<IncomingBody>, t0: Option<std::time::Instant>) -> Step {
-    let direct = DIRECT.with(|d| d.borrow().clone());
+pub(crate) fn dispatch(rid: u32, req: CurrentReq, body: Option<IncomingBody>, t0: Option<std::time::Instant>) -> Step {
+    let direct = DIRECT.with(|d| d.borrow().get(&rid).cloned());
+    if fast_log() { eprintln!("[dispatch w{}] rid={rid} handler={}", worker_id(), direct.is_some()); }
     let Some(d) = direct else {
         let (rtx, rrx) = oneshot::channel();
         let parts = match req { CurrentReq::Parts(p) => p, CurrentReq::Raw(r) => r.to_parts() };
@@ -154,9 +162,9 @@ pub(crate) fn dispatch(req: CurrentReq, body: Option<IncomingBody>, t0: Option<s
 }
 
 /// Fast-path entry: a header-only request parsed by the worker's event loop.
-pub(crate) fn dispatch_raw(raw: RawReq) -> Step {
+pub(crate) fn dispatch_raw(rid: u32, raw: RawReq) -> Step {
     let t0 = if stats_enabled() { Some(std::time::Instant::now()) } else { None };
-    dispatch(CurrentReq::Raw(raw), None, t0)
+    dispatch(rid, CurrentReq::Raw(raw), None, t0)
 }
 
 /// Body bytes of a V8 string: Latin-1 strings are copied byte-for-byte (valid UTF-8 when
@@ -270,7 +278,8 @@ fn build_response(out: Outgoing) -> Response<Full<Bytes>> {
 }
 
 thread_local! {
-    static HYPER_TX: RefCell<Option<mpsc::Sender<IncomingReq>>> = const { RefCell::new(None) };
+    /// Per server id: queue for requests arriving before the handler is registered.
+    static HYPER_TX: RefCell<HashMap<u32, mpsc::Sender<IncomingReq>>> = RefCell::new(HashMap::new());
 }
 
 /// AsyncRead/AsyncWrite that first yields bytes already read by the fast path.
@@ -300,7 +309,7 @@ impl<T: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Prefixed<T> {
 }
 
 /// One request on the hyper path.
-async fn serve_one(req: Request<IncomingBody>, tx: mpsc::Sender<IncomingReq>) -> Result<Response<Full<Bytes>>, hyper::Error> {
+async fn serve_one(rid: u32, req: Request<IncomingBody>, tx: mpsc::Sender<IncomingReq>) -> Result<Response<Full<Bytes>>, hyper::Error> {
     if raw_mode() {
         let mut resp = Response::new(Full::new(Bytes::from_static(b"Hello, World!")));
         resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("text/plain;charset=UTF-8"));
@@ -309,7 +318,7 @@ async fn serve_one(req: Request<IncomingBody>, tx: mpsc::Sender<IncomingReq>) ->
     let (parts, body) = req.into_parts();
     let t0 = if stats_enabled() { Some(std::time::Instant::now()) } else { None };
     // Decide synchronously (no `Rc<Direct>` may live across an await).
-    let step = dispatch(CurrentReq::Parts(parts), Some(body), t0);
+    let step = dispatch(rid, CurrentReq::Parts(parts), Some(body), t0);
     let rrx = match step {
         Step::Done(out) => return Ok(build_response(out)),
         Step::Pending(rrx) => rrx,
@@ -327,17 +336,19 @@ async fn serve_one(req: Request<IncomingBody>, tx: mpsc::Sender<IncomingReq>) ->
 }
 
 /// The fast path met a request it does not handle: continue the connection on hyper.
-pub(crate) fn hyper_takeover(std_stream: std::net::TcpStream, prefix: Vec<u8>) {
+pub(crate) fn hyper_takeover(rid: u32, std_stream: std::net::TcpStream, prefix: Vec<u8>) {
     let Ok(stream) = tokio::net::TcpStream::from_std(std_stream) else { return };
-    let tx = HYPER_TX.with(|h| h.borrow().clone());
+    let tx = HYPER_TX.with(|h| h.borrow().get(&rid).cloned());
     let Some(tx) = tx else { return };
     let io = TokioIo::new(Prefixed { inner: stream, prefix, pos: 0 });
     tokio::spawn(async move {
         let svc = service_fn(move |req: Request<IncomingBody>| {
             let tx = tx.clone();
-            async move { serve_one(req, tx).await }
+            async move { serve_one(rid, req, tx).await }
         });
-        let _ = hyper::server::conn::http1::Builder::new().keep_alive(true).serve_connection(io, svc).await;
+        let mut b = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+        b.http1().keep_alive(true);
+        let _ = b.serve_connection(io, svc).await;
     });
 }
 
@@ -383,6 +394,8 @@ fn stats_report() {
 }
 
 pub struct HttpServer {
+    /// Bound port, for `address()` after listening on port 0.
+    port: u16,
     rx: mpsc::Receiver<IncomingReq>,
 }
 
@@ -408,8 +421,13 @@ struct Hub {
     senders: Vec<(mpsc::UnboundedSender<(std::net::TcpStream, std::sync::Arc<std::sync::atomic::AtomicUsize>)>, std::sync::Arc<std::sync::atomic::AtomicUsize>)>,
     /// Workers expected to join before the acceptor starts handing out connections.
     expected: usize,
+    /// Port actually bound (differs from the requested one for port 0).
+    port: u16,
 }
 static HUBS: std::sync::Mutex<Option<HashMap<SocketAddr, std::sync::Arc<std::sync::Mutex<Hub>>>>> = std::sync::Mutex::new(None);
+/// Bound address of the n-th port-0 listen of each thread, keyed by (ip, n).
+static EPHEMERAL: std::sync::LazyLock<std::sync::Mutex<HashMap<(std::net::IpAddr, u32), SocketAddr>>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+thread_local! { static EPHEMERAL_SEQ: std::cell::Cell<u32> = const { std::cell::Cell::new(0) }; }
 
 fn bind_listener(addr: SocketAddr) -> std::io::Result<std::net::TcpListener> {
     use socket2::{Domain, Protocol, Socket, Type};
@@ -426,22 +444,51 @@ fn bind_listener(addr: SocketAddr) -> std::io::Result<std::net::TcpListener> {
     Ok(sock.into())
 }
 
+/// Connections a worker takes before the acceptor starts filling the next one
+/// (`KESTREL_PACK`, default 16; 0 = plain least-loaded).
+fn pack_limit() -> usize {
+    static PACK: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+    *PACK.get_or_init(|| std::env::var("KESTREL_PACK").ok().and_then(|v| v.parse().ok()).unwrap_or(16))
+}
+
 pub type ConnRx = mpsc::UnboundedReceiver<(std::net::TcpStream, std::sync::Arc<std::sync::atomic::AtomicUsize>)>;
 
 /// Join (or create) the acceptor for `addr`. Connections go to the worker with the fewest
 /// live connections, so long-lived clients spread evenly across runtimes.
-fn join_hub(addr: SocketAddr, expected: usize) -> std::io::Result<ConnRx> {
+fn join_hub(addr: SocketAddr, expected: usize) -> std::io::Result<(ConnRx, u16)> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let (ctx, crx) = mpsc::unbounded_channel();
     let count = std::sync::Arc::new(AtomicUsize::new(0));
     let mut hubs = HUBS.lock().unwrap();
     let hubs = hubs.get_or_insert_with(HashMap::new);
+    // Port 0: every worker thread runs the same module, so its n-th ephemeral listen must
+    // join the hub the first thread bound for its own n-th. Key by (ip, n) and remember the
+    // bound address; HUBS is held while binding, so exactly one thread binds.
+    let mut pre_bound = None;
+    let addr = if addr.port() == 0 {
+        let seq = EPHEMERAL_SEQ.with(|c| { let v = c.get() + 1; c.set(v); v });
+        let mut eph = EPHEMERAL.lock().unwrap();
+        match eph.get(&(addr.ip(), seq)) {
+            Some(a) => *a,
+            None => {
+                let l = bind_listener(addr)?;
+                let bound = l.local_addr()?;
+                eph.insert((addr.ip(), seq), bound);
+                pre_bound = Some(l);
+                bound
+            }
+        }
+    } else {
+        addr
+    };
     if let Some(hub) = hubs.get(&addr) {
-        hub.lock().unwrap().senders.push((ctx, count));
-        return Ok(crx);
+        let mut h = hub.lock().unwrap();
+        h.senders.push((ctx, count));
+        return Ok((crx, h.port));
     }
-    let listener = bind_listener(addr)?;
-    let hub = std::sync::Arc::new(std::sync::Mutex::new(Hub { senders: vec![(ctx, count)], expected }));
+    let listener = match pre_bound { Some(l) => l, None => bind_listener(addr)? };
+    let port = listener.local_addr().map(|a| a.port()).unwrap_or(addr.port());
+    let hub = std::sync::Arc::new(std::sync::Mutex::new(Hub { senders: vec![(ctx, count)], expected, port }));
     hubs.insert(addr, hub.clone());
     std::thread::Builder::new()
         .name(format!("kestrel-accept-{}", addr.port()))
@@ -463,9 +510,24 @@ fn join_hub(addr: SocketAddr, expected: usize) -> std::io::Result<ConnRx> {
                 let mut h = hub.lock().unwrap();
                 let mut stream = Some(stream);
                 while !h.senders.is_empty() {
-                    // Least-loaded worker.
-                    let (i, _) = h.senders.iter().enumerate().min_by_key(|(_, (_, c))| c.load(Ordering::Relaxed)).unwrap();
+                    // Pack connections onto as few workers as needed (up to `pack` per worker,
+                    // fullest-first), then least-loaded. A worker with 2–4 mostly idle
+                    // keep-alive connections spends its time sleeping and waking in epoll_wait;
+                    // measured on a 128-vCPU host at 256 connections: 16 workers 492 k req/s,
+                    // 64 workers 430 k. With thousands of connections every worker fills up
+                    // and the policy degenerates to least-loaded.
+                    let pack = pack_limit();
+                    let i = h
+                        .senders
+                        .iter()
+                        .enumerate()
+                        .map(|(i, (_, c))| (i, c.load(Ordering::Relaxed)))
+                        .filter(|&(_, n)| n < pack)
+                        .max_by_key(|&(_, n)| n)
+                        .map(|(i, _)| i)
+                        .unwrap_or_else(|| h.senders.iter().enumerate().min_by_key(|(_, (_, c))| c.load(Ordering::Relaxed)).unwrap().0);
                     let (tx, c) = &h.senders[i];
+                    if fast_log() { eprintln!("[hub :{}] -> sender {i} of {}", addr.port(), h.senders.len()); }
                     c.fetch_add(1, Ordering::Relaxed);
                     match tx.send((stream.take().unwrap(), c.clone())) {
                         Ok(()) => break,
@@ -478,29 +540,39 @@ fn join_hub(addr: SocketAddr, expected: usize) -> std::io::Result<ConnRx> {
                 }
             }
         })?;
-    Ok(crx)
+    Ok((crx, port))
 }
 
 pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32) -> Result<u32, JsErrorBox> {
     let addr: SocketAddr = format!("{host}:{port}")
         .parse()
         .map_err(|e| JsErrorBox::type_error(format!("bad address {host}:{port}: {e}")))?;
-    let mut conns = Some(join_hub(addr, expected_workers.max(1) as usize).map_err(|e| JsErrorBox::generic(format!("listen {addr}: {e}")))?);
+    let (conns, bound_port) = join_hub(addr, expected_workers.max(1) as usize).map_err(|e| JsErrorBox::generic(format!("listen {addr}: {e}")))?;
+    let mut conns = Some(conns);
 
     let (tx, rx) = mpsc::channel::<IncomingReq>(16384);
-    HYPER_TX.with(|h| *h.borrow_mut() = Some(tx.clone()));
+    // Allocate the server id first: connections and handlers are keyed by it.
+    let rid = {
+        let hs = state_mut(state);
+        let rid = hs.next_rid;
+        hs.next_rid += 1;
+        rid
+    };
+    HYPER_TX.with(|h| h.borrow_mut().insert(rid, tx.clone()));
     let use_fast = crate::fastpath::enabled() && crate::netimpl::TLS_ACCEPTOR.with(|t| t.borrow().is_none()) && !raw_mode() && crate::fastpath::start();
     // The fast loop drains the receiver itself (see fastpath::Fast::rxs); it owns each
     // connection and decrements the live count when it closes.
     if use_fast {
         if let Some(rx) = conns.take() {
-            if !crate::fastpath::adopt(rx) {
+            if !crate::fastpath::adopt(rid, rx) {
                 // Loop not running after all: nothing to serve this receiver; fall back is
                 // impossible once the receiver is moved, so this branch must not happen.
                 unreachable!("fast loop started but refused the receiver");
             }
         }
     }
+    // Captured once: the thread-local config belongs to this server, not to later ones.
+    let tls_cfg = crate::netimpl::TLS_ACCEPTOR.with(|t| t.borrow().clone());
     tokio::spawn(async move {
         let Some(mut conns) = conns else { return };
         while let Some((std_stream, live)) = conns.recv().await {
@@ -510,7 +582,7 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
             }
             let Ok(stream) = tokio::net::TcpStream::from_std(std_stream) else { live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); continue };
             let tx = tx.clone();
-            let tls = crate::netimpl::TLS_ACCEPTOR.with(|t| t.borrow().clone());
+            let tls = tls_cfg.clone();
             tokio::spawn(async move {
                 struct Dec(std::sync::Arc<std::sync::atomic::AtomicUsize>);
                 impl Drop for Dec { fn drop(&mut self) { self.0.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); } }
@@ -526,22 +598,20 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
                 let io = TokioIo::new(io);
                 let svc = service_fn(move |req: Request<IncomingBody>| {
                     let tx = tx.clone();
-                    async move { serve_one(req, tx).await }
+                    async move { serve_one(rid, req, tx).await }
                 });
                 // No pipeline_flush: it delays flushing a response until the read side goes
                 // idle, which adds milliseconds of latency to non-pipelined clients.
-                let _ = hyper::server::conn::http1::Builder::new()
-                    .keep_alive(true)
-                    .serve_connection(io, svc)
-                    .await;
+                // HTTP/1.1 or HTTP/2 (ALPN "h2", or the h2c preface), decided per connection.
+                let mut b = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
+                b.http1().keep_alive(true);
+                let _ = b.serve_connection(io, svc).await;
             });
         }
     });
 
     let hs = state_mut(state);
-    let rid = hs.next_rid;
-    hs.next_rid += 1;
-    hs.servers.insert(rid, Rc::new(RefCell::new(HttpServer { rx })));
+    hs.servers.insert(rid, Rc::new(RefCell::new(HttpServer { rx, port: bound_port })));
     if stats_enabled() {
         STATS.with(|s| *s.borrow_mut() = Some(Stats::default()));
         tokio::spawn(async {
@@ -617,6 +687,21 @@ fn park_current(hs: &mut HttpState, id: u32) {
 
 pub fn method(state: &mut OpState, id: u32) -> String {
     with_parts(state, id, |p| p.method.as_str().to_string()).unwrap_or_default()
+}
+
+pub fn port(state: &mut OpState, rid: u32) -> u16 {
+    let hs = state_mut(state);
+    hs.servers.get(&rid).map(|s| s.borrow().port).unwrap_or(0)
+}
+
+pub fn version(state: &mut OpState, id: u32) -> u32 {
+    with_parts(state, id, |p| match p.version {
+        hyper::Version::HTTP_10 => 10,
+        hyper::Version::HTTP_2 => 2,
+        hyper::Version::HTTP_3 => 3,
+        _ => 11,
+    })
+    .unwrap_or(11)
 }
 
 pub fn url(state: &mut OpState, id: u32) -> String {

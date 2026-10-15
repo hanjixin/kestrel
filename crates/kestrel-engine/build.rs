@@ -37,6 +37,7 @@ mod fetchimpl {
     #[derive(serde::Serialize)]
     pub struct FetchResp { pub status: u16 }
     pub async fn fetch(_: std::rc::Rc<std::cell::RefCell<deno_core::OpState>>, _: String, _: String, _: Vec<(String, String)>, _: Option<Vec<u8>>, _: bool) -> Result<FetchResp, deno_error::JsErrorBox> { unreachable!() }
+    pub async fn fetch_opts(_: std::rc::Rc<std::cell::RefCell<deno_core::OpState>>, _: String, _: String, _: Vec<(String, String)>, _: Option<Vec<u8>>, _: bool, _: bool, _: bool) -> Result<FetchResp, deno_error::JsErrorBox> { unreachable!() }
 }
 
 /// Snapshot-time stubs; real implementations live in src/httpimpl.rs.
@@ -50,7 +51,9 @@ mod httpimpl {
     pub fn listen(_: &mut OpState, _: &str, _: u16, _: u32) -> Result<u32, JsErrorBox> { unreachable!() }
     pub async fn accept(_: Rc<RefCell<OpState>>, _: u32) -> Result<Vec<u32>, JsErrorBox> { unreachable!() }
     pub fn method(_: &mut OpState, _: u32) -> String { unreachable!() }
-    pub fn set_handler(_: &mut deno_core::v8::PinScope, _: Rc<RefCell<OpState>>, _: deno_core::v8::Local<deno_core::v8::Function>) { unreachable!() }
+    pub fn version(_: &mut OpState, _: u32) -> u32 { unreachable!() }
+    pub fn port(_: &mut OpState, _: u32) -> u16 { unreachable!() }
+    pub fn set_handler(_: &mut deno_core::v8::PinScope, _: Rc<RefCell<OpState>>, _: u32, _: deno_core::v8::Local<deno_core::v8::Function>) { unreachable!() }
     pub fn url(_: &mut OpState, _: u32) -> String { unreachable!() }
     pub fn respond(_: &mut OpState, _: u32, _: u16, _: &str, _: bytes::Bytes) -> Result<(), JsErrorBox> { unreachable!() }
     pub async fn body(_: Rc<RefCell<OpState>>, _: u32) -> Result<Vec<u8>, JsErrorBox> { unreachable!() }

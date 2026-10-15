@@ -340,7 +340,7 @@ fn install_provider() {
 
 /// Configure TLS for servers started on this thread afterwards.
 #[op2(fast)]
-pub fn op_tls_server_config(#[string] cert_pem: &str, #[string] key_pem: &str) -> Result<(), JsErrorBox> {
+pub fn op_tls_server_config(#[string] cert_pem: &str, #[string] key_pem: &str, #[string] alpn: &str) -> Result<(), JsErrorBox> {
     install_provider();
     let certs: Vec<_> = rustls_pemfile::certs(&mut cert_pem.as_bytes())
         .collect::<Result<_, _>>()
@@ -352,9 +352,16 @@ pub fn op_tls_server_config(#[string] cert_pem: &str, #[string] key_pem: &str) -
         .with_no_client_auth()
         .with_single_cert(certs, key)
         .map_err(|e| JsErrorBox::type_error(format!("tls config: {e}")))?;
-    cfg.alpn_protocols = vec![b"http/1.1".to_vec()];
+    // Comma-separated ALPN list, most preferred first ("h2,http/1.1"); default HTTP/1.1 only.
+    cfg.alpn_protocols = if alpn.is_empty() { vec![b"http/1.1".to_vec()] } else { alpn.split(',').map(|p| p.trim().as_bytes().to_vec()).collect() };
     TLS_ACCEPTOR.with(|t| *t.borrow_mut() = Some(Arc::new(tokio_rustls::TlsAcceptor::from(Arc::new(cfg)))));
     Ok(())
+}
+
+/// Servers started on this thread afterwards are plain TCP again.
+#[op2(fast)]
+pub fn op_tls_server_clear() {
+    TLS_ACCEPTOR.with(|t| *t.borrow_mut() = None);
 }
 
 /// TLS client connection for node:tls / https client fallbacks.
@@ -866,4 +873,300 @@ pub fn op_udp_multicast(state: &mut OpState, rid: u32, #[string] op: &str, #[str
     };
     drop(sock);
     r.map_err(|e| net_err(e, "setsockopt"))
+}
+
+// ---------- vm.SourceTextModule / vm.SyntheticModule ----------
+
+struct VmModule {
+    module: v8::Global<v8::Module>,
+    context: v8::Global<v8::Context>,
+    /// specifier -> module id, filled by `link()`.
+    deps: HashMap<String, u32>,
+    /// SyntheticModule: the JS evaluate callback run by the evaluation steps.
+    synthetic: Option<v8::Global<v8::Function>>,
+}
+thread_local! {
+    static VM_MODULES: RefCell<HashMap<u32, VmModule>> = RefCell::new(HashMap::new());
+    /// V8 identity hash -> module id, for the resolve / evaluation-steps callbacks.
+    static VM_BY_HASH: RefCell<HashMap<i32, u32>> = RefCell::new(HashMap::new());
+    static VM_NEXT: std::cell::Cell<u32> = const { std::cell::Cell::new(1) };
+}
+
+fn vm_seed_context<'s>(scope: &mut v8::PinScope<'s, '_>, sandbox: v8::Local<v8::Object>) -> Result<v8::Local<'s, v8::Context>, JsErrorBox> {
+    let ctx = v8::Context::new(scope, Default::default());
+    let cs = &mut v8::ContextScope::new(scope, ctx);
+    let global = ctx.global(cs);
+    let names = sandbox.get_own_property_names(cs, Default::default()).ok_or_else(|| JsErrorBox::generic("sandbox"))?;
+    for i in 0..names.length() {
+        if let Some(k) = names.get_index(cs, i) {
+            if let Some(v) = sandbox.get(cs, k) {
+                global.set(cs, k, v);
+            }
+        }
+    }
+    Ok(ctx)
+}
+
+fn vm_register(scope: &mut v8::PinScope, module: v8::Local<v8::Module>, context: v8::Local<v8::Context>) -> u32 {
+    let id = VM_NEXT.with(|n| { let v = n.get(); n.set(v + 1); v });
+    VM_BY_HASH.with(|h| h.borrow_mut().insert(module.get_identity_hash().get(), id));
+    VM_MODULES.with(|m| m.borrow_mut().insert(id, VmModule { module: v8::Global::new(scope, module), context: v8::Global::new(scope, context), deps: HashMap::new(), synthetic: None }));
+    id
+}
+
+fn vm_get(id: u32) -> Result<(v8::Global<v8::Module>, v8::Global<v8::Context>), JsErrorBox> {
+    VM_MODULES.with(|m| m.borrow().get(&id).map(|x| (x.module.clone(), x.context.clone()))).ok_or_else(|| JsErrorBox::type_error("unknown vm module"))
+}
+
+/// Compile an ES module (in the main context, or a fresh one seeded from `sandbox`).
+#[op2(fast)]
+pub fn op_vm_module_compile(scope: &mut v8::PinScope, #[string] code: &str, #[string] identifier: &str, sandbox: Option<v8::Local<v8::Object>>) -> Result<u32, JsErrorBox> {
+    let ctx = match sandbox {
+        Some(sb) => vm_seed_context(scope, sb)?,
+        None => scope.get_current_context(),
+    };
+    let module = {
+        let cs = &mut v8::ContextScope::new(scope, ctx);
+        let src = v8::String::new(cs, code).ok_or_else(|| JsErrorBox::generic("source too long"))?;
+        let name = v8::String::new(cs, identifier).unwrap();
+        let origin = v8::ScriptOrigin::new(cs, name.into(), 0, 0, false, 0, None, false, false, true, None);
+        let mut source = v8::script_compiler::Source::new(src, Some(&origin));
+        v8::tc_scope!(let tc, cs);
+        let Some(m) = v8::script_compiler::compile_module(tc, &mut source) else { return Err(tc_err!(tc)) };
+        v8::Global::new(tc, m)
+    };
+    let m = v8::Local::new(scope, &module);
+    Ok(vm_register(scope, m, ctx))
+}
+
+#[op2]
+#[serde]
+pub fn op_vm_module_requests(scope: &mut v8::PinScope, id: u32) -> Result<Vec<String>, JsErrorBox> {
+    let (m, _) = vm_get(id)?;
+    let m = v8::Local::new(scope, &m);
+    let reqs = m.get_module_requests();
+    let mut out = Vec::new();
+    for i in 0..reqs.length() {
+        if let Some(d) = reqs.get(scope, i) {
+            if let Ok(r) = v8::Local::<v8::ModuleRequest>::try_from(d) {
+                out.push(r.get_specifier().to_rust_string_lossy(scope));
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[op2]
+pub fn op_vm_module_link(id: u32, #[serde] deps: Vec<(String, u32)>) -> Result<(), JsErrorBox> {
+    VM_MODULES.with(|m| {
+        let mut m = m.borrow_mut();
+        let e = m.get_mut(&id).ok_or_else(|| JsErrorBox::type_error("unknown vm module"))?;
+        for (s, d) in deps { e.deps.insert(s, d); }
+        Ok(())
+    })
+}
+
+fn vm_resolve<'s>(context: v8::Local<'s, v8::Context>, specifier: v8::Local<'s, v8::String>, _attrs: v8::Local<'s, v8::FixedArray>, referrer: v8::Local<'s, v8::Module>) -> Option<v8::Local<'s, v8::Module>> {
+    // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
+    v8::callback_scope!(unsafe scope, context);
+    let spec = specifier.to_rust_string_lossy(scope);
+    let rid = VM_BY_HASH.with(|h| h.borrow().get(&referrer.get_identity_hash().get()).copied());
+    let dep = rid.and_then(|rid| VM_MODULES.with(|m| { let m = m.borrow(); let r = m.get(&rid)?; let d = *r.deps.get(&spec)?; m.get(&d).map(|x| x.module.clone()) }));
+    match dep {
+        Some(g) => Some(v8::Local::new(scope, &g)),
+        None => {
+            let msg = v8::String::new(scope, &format!("Cannot find module '{spec}'. Linked modules must be returned by the linker")).unwrap();
+            let e = v8::Exception::error(scope, msg);
+            scope.throw_exception(e);
+            None
+        }
+    }
+}
+
+#[op2(fast)]
+pub fn op_vm_module_instantiate(scope: &mut v8::PinScope, id: u32) -> Result<(), JsErrorBox> {
+    let (m, ctx) = vm_get(id)?;
+    let ctx = v8::Local::new(scope, &ctx);
+    let cs = &mut v8::ContextScope::new(scope, ctx);
+    let m = v8::Local::new(cs, &m);
+    v8::tc_scope!(let tc, cs);
+    match m.instantiate_module(tc, vm_resolve) {
+        Some(true) => Ok(()),
+        _ => Err(tc_err!(tc)),
+    }
+}
+
+/// Evaluate; returns the promise V8 produces (top-level await is on).
+#[op2]
+pub fn op_vm_module_evaluate<'a>(scope: &mut v8::PinScope<'a, '_>, id: u32) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
+    let (m, ctx) = vm_get(id)?;
+    let ctx = v8::Local::new(scope, &ctx);
+    let result = {
+        let cs = &mut v8::ContextScope::new(scope, ctx);
+        let m = v8::Local::new(cs, &m);
+        v8::tc_scope!(let tc, cs);
+        match m.evaluate(tc) {
+            Some(v) => v8::Global::new(tc, v),
+            None => return Err(tc_err!(tc)),
+        }
+    };
+    Ok(v8::Local::new(scope, result))
+}
+
+#[op2]
+#[string]
+pub fn op_vm_module_status(scope: &mut v8::PinScope, id: u32) -> Result<String, JsErrorBox> {
+    let (m, _) = vm_get(id)?;
+    let m = v8::Local::new(scope, &m);
+    Ok(match m.get_status() {
+        v8::ModuleStatus::Uninstantiated => "uninstantiated",
+        v8::ModuleStatus::Instantiating => "instantiating",
+        v8::ModuleStatus::Instantiated => "linked",
+        v8::ModuleStatus::Evaluating => "evaluating",
+        v8::ModuleStatus::Evaluated => "evaluated",
+        v8::ModuleStatus::Errored => "errored",
+    }
+    .to_string())
+}
+
+#[op2]
+pub fn op_vm_module_namespace<'a>(scope: &mut v8::PinScope<'a, '_>, id: u32) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
+    let (m, _) = vm_get(id)?;
+    let m = v8::Local::new(scope, &m);
+    Ok(m.get_module_namespace())
+}
+
+#[op2]
+pub fn op_vm_module_error<'a>(scope: &mut v8::PinScope<'a, '_>, id: u32) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
+    let (m, _) = vm_get(id)?;
+    let m = v8::Local::new(scope, &m);
+    Ok(m.get_exception())
+}
+
+fn vm_synthetic_steps<'s>(context: v8::Local<'s, v8::Context>, module: v8::Local<'s, v8::Module>) -> Option<v8::Local<'s, v8::Value>> {
+    // SAFETY: `CallbackScope` can be safely constructed from `Local<Context>`
+    v8::callback_scope!(unsafe scope, context);
+    v8::tc_scope!(let tc, scope);
+    let id = VM_BY_HASH.with(|h| h.borrow().get(&module.get_identity_hash().get()).copied());
+    let cb = id.and_then(|id| VM_MODULES.with(|m| m.borrow().get(&id).and_then(|x| x.synthetic.clone())));
+    if let Some(cb) = cb {
+        let f = v8::Local::new(tc, &cb);
+        let recv = v8::undefined(tc);
+        if f.call(tc, recv.into(), &[]).is_none() {
+            return None; // exception propagates
+        }
+    }
+    let resolver = v8::PromiseResolver::new(tc).unwrap();
+    let undefined = v8::undefined(tc);
+    resolver.resolve(tc, undefined.into());
+    Some(resolver.get_promise(tc).into())
+}
+
+#[op2]
+pub fn op_vm_synthetic_create(scope: &mut v8::PinScope, #[string] identifier: &str, #[serde] export_names: Vec<String>, sandbox: Option<v8::Local<v8::Object>>, callback: v8::Local<v8::Function>) -> Result<u32, JsErrorBox> {
+    let ctx = match sandbox {
+        Some(sb) => vm_seed_context(scope, sb)?,
+        None => scope.get_current_context(),
+    };
+    let module = {
+        let cs = &mut v8::ContextScope::new(scope, ctx);
+        let name = v8::String::new(cs, identifier).unwrap();
+        let names: Vec<v8::Local<v8::String>> = export_names.iter().map(|n| v8::String::new(cs, n).unwrap()).collect();
+        let m = v8::Module::create_synthetic_module(cs, name, &names, vm_synthetic_steps);
+        v8::Global::new(cs, m)
+    };
+    let m = v8::Local::new(scope, &module);
+    let id = vm_register(scope, m, ctx);
+    let cb = v8::Global::new(scope, callback);
+    VM_MODULES.with(|m| { if let Some(e) = m.borrow_mut().get_mut(&id) { e.synthetic = Some(cb); } });
+    Ok(id)
+}
+
+#[op2(fast)]
+pub fn op_vm_synthetic_set_export<'a>(scope: &mut v8::PinScope<'a, '_>, id: u32, #[string] name: &str, value: v8::Local<'a, v8::Value>) -> Result<(), JsErrorBox> {
+    let (m, _) = vm_get(id)?;
+    let m = v8::Local::new(scope, &m);
+    let n = v8::String::new(scope, name).unwrap();
+    v8::tc_scope!(let tc, scope);
+    match m.set_synthetic_module_export(tc, n, value) {
+        Some(true) => Ok(()),
+        _ => Err(tc_err!(tc)),
+    }
+}
+
+// ---------- node:inspector (in-process sessions over deno_core's local inspector session) ----------
+
+/// Put into OpState by the runtime so ops can open sessions on this isolate's inspector.
+pub struct InspectorHandle(pub Rc<deno_core::JsRuntimeInspector>);
+
+struct InspSession {
+    session: deno_core::LocalInspectorSession,
+    queue: Rc<RefCell<std::collections::VecDeque<String>>>,
+    notify: Rc<tokio::sync::Notify>,
+}
+thread_local! {
+    static INSP: RefCell<HashMap<u32, InspSession>> = RefCell::new(HashMap::new());
+    static INSP_NEXT: std::cell::Cell<u32> = const { std::cell::Cell::new(1) };
+}
+
+#[op2(fast)]
+pub fn op_inspector_connect(state: &mut OpState) -> Result<u32, JsErrorBox> {
+    let h = state.try_borrow::<InspectorHandle>().map(|h| h.0.clone()).ok_or_else(|| JsErrorBox::new("Error", "ERR_INSPECTOR_NOT_AVAILABLE: Inspector is not available"))?;
+    let queue = Rc::new(RefCell::new(std::collections::VecDeque::new()));
+    let notify = Rc::new(tokio::sync::Notify::new());
+    let (q2, n2) = (queue.clone(), notify.clone());
+    let cb: deno_core::InspectorSessionSend = Box::new(move |msg: deno_core::InspectorMsg| {
+        q2.borrow_mut().push_back(msg.content);
+        n2.notify_one();
+    });
+    let session = deno_core::JsRuntimeInspector::create_local_session(h, cb, deno_core::InspectorSessionKind::NonBlocking { wait_for_disconnect: false });
+    let id = INSP_NEXT.with(|n| { let v = n.get(); n.set(v + 1); v });
+    INSP.with(|s| s.borrow_mut().insert(id, InspSession { session, queue, notify }));
+    Ok(id)
+}
+
+#[op2(fast)]
+pub fn op_inspector_post(id: u32, #[string] msg: &str) -> Result<(), JsErrorBox> {
+    // Take the session out while dispatching: the response callback runs synchronously and
+    // must not find the map borrowed.
+    let taken = INSP.with(|s| s.borrow_mut().remove(&id));
+    let Some(mut sess) = taken else { return Err(JsErrorBox::new("Error", "ERR_INSPECTOR_NOT_CONNECTED: Session is not connected")) };
+    sess.session.dispatch(msg.to_string());
+    INSP.with(|s| s.borrow_mut().insert(id, sess));
+    Ok(())
+}
+
+fn insp_drain(id: u32) -> Option<Vec<String>> {
+    INSP.with(|s| s.borrow().get(&id).map(|x| x.queue.borrow_mut().drain(..).collect()))
+}
+
+/// Messages already queued (responses arrive synchronously from `dispatch`).
+#[op2]
+#[serde]
+pub fn op_inspector_take(id: u32) -> Vec<String> {
+    insp_drain(id).unwrap_or_default()
+}
+
+/// Wait for further messages (notifications); empty when the session is gone.
+#[op2]
+#[serde]
+pub async fn op_inspector_recv(id: u32) -> Vec<String> {
+    loop {
+        match insp_drain(id) {
+            None => return Vec::new(),
+            Some(v) if !v.is_empty() => return v,
+            Some(_) => {}
+        }
+        let n = INSP.with(|s| s.borrow().get(&id).map(|x| x.notify.clone()));
+        let Some(n) = n else { return Vec::new() };
+        n.notified().await;
+    }
+}
+
+#[op2(fast)]
+pub fn op_inspector_disconnect(id: u32) {
+    if let Some(s) = INSP.with(|s| s.borrow_mut().remove(&id)) {
+        s.notify.notify_one();
+        drop(s);
+    }
 }

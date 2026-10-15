@@ -38,6 +38,8 @@ import cluster from "ext:kestrel/node/cluster.js";
 import constants from "ext:kestrel/node/constants.js";
 import async_hooks from "ext:kestrel/node/async_hooks.js";
 import inspector from "ext:kestrel/node/inspector.js";
+import inspectorPromises from "ext:kestrel/node/inspector_promises.js";
+import http2 from "ext:kestrel/node/http2.js";
 
 {
   const prevInit = globalThis.__kestrel_init;
@@ -47,7 +49,7 @@ import inspector from "ext:kestrel/node/inspector.js";
 const builtins = {
   assert, "assert/strict": assert.strict, buffer, child_process, crypto, events, fs, "fs/promises": fsPromises, http, https, module, net, os, path, "path/posix": path,
   process: globalThis.process, querystring, readline, stream, "stream/promises": stream.promises, string_decoder, timers, "timers/promises": timersPromises, tty, url, util, "util/types": utilTypes, worker_threads, zlib,
-  tls, dns, "dns/promises": dnsPromises, dgram, perf_hooks, v8, vm, cluster, constants, sys: util, async_hooks, inspector,
+  tls, dns, "dns/promises": dnsPromises, dgram, perf_hooks, v8, vm, cluster, constants, sys: util, async_hooks, inspector, "inspector/promises": inspectorPromises, http2,
 };
 _registerBuiltins(builtins);
 globalThis[Symbol.for("kestrel.builtin")] = (name) => builtins[String(name).replace(/^node:/, "")];
@@ -234,6 +236,7 @@ globalThis.fetch = async function fetch(input, init = kEmpty) {
 
 // ---------- Kestrel namespace: serve ----------
 const TEXT_PLAIN = "content-type\0text/plain;charset=UTF-8";
+let workersSpawned = false;
 function serve(options) {
   const workerId = ops.op_kestrel_worker_id();
   const handler = typeof options === "function" ? options : options.fetch;
@@ -242,13 +245,17 @@ function serve(options) {
   const hostname = options.hostname ?? "0.0.0.0";
   const cpus = ops.op_kestrel_cpus();
   const workers = Math.max(1, Math.min(options.workers === "auto" || options.workers === undefined ? cpus : options.workers | 0, 256));
-  if (workerId === 0 && workers > 1) ops.op_kestrel_spawn_workers(workers - 1);
+  // Workers are spawned once per process; later serve() calls join the same threads.
+  if (workerId === 0 && workers > 1 && !workersSpawned) { workersSpawned = true; ops.op_kestrel_spawn_workers(workers - 1); }
 
   if (options.tls) {
     const load = (v) => (typeof v === "string" && !v.includes("-----BEGIN") ? fs.readFileSync(v, "utf8") : typeof v === "string" ? v : new TextDecoder().decode(v));
-    ops.op_tls_server_config(load(options.tls.cert), load(options.tls.key));
+    ops.op_tls_server_config(load(options.tls.cert), load(options.tls.key), Array.isArray(options.tls.alpn) ? options.tls.alpn.join(",") : "");
+  } else {
+    ops.op_tls_server_clear();
   }
   const rid = ops.op_kestrel_http_listen(hostname, port, workers);
+  const boundPort = ops.op_kestrel_http_port(rid) || port;
   const accept = ops.op_kestrel_http_accept;
   const respond = ops.op_kestrel_http_respond;
   const respondBytes = ops.op_kestrel_http_respond_bytes;
@@ -282,12 +289,12 @@ function serve(options) {
     drainBody(b).then((u) => respondBytes(id, r.status, hdrs, u), () => respond(id, 500, "", "Internal Server Error"));
     return undefined;
   };
-  ops.op_kestrel_http_set_handler(trampoline);
+  ops.op_kestrel_http_set_handler(rid, trampoline);
   // Keeps the event loop alive for the lifetime of the server (never resolves).
   accept(rid).catch(() => {});
   if (workerId === 0 && options.silent !== true) {
-    console.log(`Kestrel listening on ${options.tls ? "https" : "http"}://${hostname}:${port} (${workers} worker${workers > 1 ? "s" : ""})`);
+    console.log(`Kestrel listening on ${options.tls ? "https" : "http"}://${hostname}:${boundPort} (${workers} worker${workers > 1 ? "s" : ""})`);
   }
-  return { port, hostname, workers };
+  return { port: boundPort, hostname, workers };
 }
 globalThis.Kestrel = Object.freeze({ serve, get workerId() { return ops.op_kestrel_worker_id(); }, version: "0.0.1" });
