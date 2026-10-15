@@ -18,10 +18,19 @@ pub struct Runtime {
 impl Runtime {
     pub fn new() -> Self {
         kestrel_aot::registry::init_thread();
+        // Young generation per isolate: the main isolate gets a large one (fewer scavenges,
+        // lower tail latency under thousands of connections); worker isolates get a small,
+        // cache-resident one, because 128 of them sharing 32 MB semi-spaces thrash memory
+        // (measured: 1.02 M -> 1.30 M req/s on a 128-core host).
+        let mb = 1024 * 1024;
+        let young = if crate::httpimpl::worker_id() == 0 { 3 * 32 * mb } else { 3 * 8 * mb };
+        let young = std::env::var("KESTREL_YOUNG_MB").ok().and_then(|v| v.parse::<usize>().ok()).map(|m| 3 * m * mb).unwrap_or(young);
+        let params = deno_core::v8::CreateParams::default().set_max_young_generation_size_in_bytes(young);
         let mut js = JsRuntime::new(RuntimeOptions {
             module_loader: Some(Rc::new(KestrelModuleLoader)),
             extensions: vec![ops::kestrel::init()],
             startup_snapshot: Some(SNAPSHOT),
+            create_params: Some(params),
             ..Default::default()
         });
         // Let the HTTP backend call into this isolate directly from its tasks.
@@ -79,12 +88,11 @@ impl Default for Runtime {
 /// Convenience: run a file to completion on a fresh current-thread Tokio runtime.
 static V8_INIT: std::sync::Once = std::sync::Once::new();
 
-/// Process-wide V8 setup. A fixed 32 MB young generation avoids the semi-space growth
-/// phases that produced 500 ms tail latencies under thousands of connections
-/// (measured on a 128-core EPYC: p99 532 ms -> 82 ms). KESTREL_V8_FLAGS overrides.
+/// Process-wide V8 setup. Young-generation sizing is per isolate (see `Runtime::new`);
+/// KESTREL_V8_FLAGS adds raw V8 flags.
 fn init_v8_once() {
     V8_INIT.call_once(|| {
-        let flags = std::env::var("KESTREL_V8_FLAGS").unwrap_or_else(|_| "--min-semi-space-size=32 --max-semi-space-size=32".to_string());
+        let flags = std::env::var("KESTREL_V8_FLAGS").unwrap_or_default();
         if !flags.trim().is_empty() {
             deno_core::v8::V8::set_flags_from_string(&flags);
         }
