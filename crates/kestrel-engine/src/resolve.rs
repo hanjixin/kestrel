@@ -10,7 +10,7 @@ use serde_json::Value;
 pub const BUILTINS: &[&str] = &[
     "assert", "buffer", "child_process", "crypto", "events", "fs", "fs/promises", "module", "os", "path",
     "path/posix", "process", "querystring", "stream", "string_decoder", "timers", "timers/promises", "tty",
-    "url", "util", "util/types", "worker_threads", "zlib", "http", "https", "net", "readline", "tls", "dns", "dns/promises",
+    "url", "util", "util/types", "worker_threads", "zlib", "http", "https", "net", "readline", "tls", "dns", "dns/promises", "dgram", "perf_hooks", "v8", "vm", "cluster", "constants", "sys",
 ];
 
 pub fn builtin_name(spec: &str) -> Option<&str> {

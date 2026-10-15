@@ -30,6 +30,12 @@ import zlib from "ext:kestrel/node/zlib.js";
 import tls from "ext:kestrel/node/tls.js";
 import dns from "ext:kestrel/node/dns.js";
 import dnsPromises from "ext:kestrel/node/dns_promises.js";
+import dgram from "ext:kestrel/node/dgram.js";
+import perf_hooks from "ext:kestrel/node/perf_hooks.js";
+import v8 from "ext:kestrel/node/v8.js";
+import vm from "ext:kestrel/node/vm.js";
+import cluster from "ext:kestrel/node/cluster.js";
+import constants from "ext:kestrel/node/constants.js";
 
 {
   const prevInit = globalThis.__kestrel_init;
@@ -39,7 +45,7 @@ import dnsPromises from "ext:kestrel/node/dns_promises.js";
 const builtins = {
   assert, "assert/strict": assert.strict, buffer, child_process, crypto, events, fs, "fs/promises": fsPromises, http, https, module, net, os, path, "path/posix": path,
   process: globalThis.process, querystring, readline, stream, "stream/promises": stream.promises, string_decoder, timers, "timers/promises": timersPromises, tty, url, util, "util/types": utilTypes, worker_threads, zlib,
-  tls, dns, "dns/promises": dnsPromises,
+  tls, dns, "dns/promises": dnsPromises, dgram, perf_hooks, v8, vm, cluster, constants, sys: util,
 };
 _registerBuiltins(builtins);
 globalThis[Symbol.for("kestrel.builtin")] = (name) => builtins[String(name).replace(/^node:/, "")];

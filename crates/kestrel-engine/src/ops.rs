@@ -176,6 +176,8 @@ deno_core::extension!(
         super::netimpl::op_worker_parent_recv, super::netimpl::op_worker_self_exit, super::netimpl::op_dns_lookup,
         super::netimpl::op_net_connect_unix, super::netimpl::op_net_from_fd, super::netimpl::op_net_listen_unix, super::netimpl::op_tls_accept,
         super::watchimpl::op_fs_watch, super::watchimpl::op_fs_watch_next, super::watchimpl::op_fs_unwatch,
+        super::netimpl::op_udp_bind, super::netimpl::op_udp_send, super::netimpl::op_udp_recv, super::netimpl::op_udp_addr, super::netimpl::op_udp_close,
+        super::netimpl::op_v8_heap_stats, super::netimpl::op_vm_run_in_this_context, super::netimpl::op_vm_run_in_new_context,
         op_kestrel_call0, op_kestrel_call1, op_kestrel_call2, op_kestrel_call3,
         op_kestrel_call4, op_kestrel_call5, op_kestrel_call6,
     ],
@@ -185,5 +187,5 @@ deno_core::extension!(
         "node/fs.js", "node/fs_promises.js", "node/http.js", "node/https.js", "node/module.js", "node/net.js",
         "node/os.js", "node/path.js", "node/path_posix.js", "node/process.js", "node/querystring.js",
         "node/readline.js", "node/stream.js", "node/string_decoder.js", "node/timers.js", "node/timers_promises.js",
-        "node/tty.js", "node/url.js", "node/util.js", "node/util_types.js", "node/worker_threads.js", "node/zlib.js", "node/tls.js", "node/dns.js", "node/dns_promises.js"],
+        "node/tty.js", "node/url.js", "node/util.js", "node/util_types.js", "node/worker_threads.js", "node/zlib.js", "node/tls.js", "node/dns.js", "node/dns_promises.js", "node/dgram.js", "node/perf_hooks.js", "node/v8.js", "node/vm.js", "node/cluster.js", "node/constants.js", "node/sys.js"],
 );

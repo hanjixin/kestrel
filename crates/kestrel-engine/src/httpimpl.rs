@@ -246,6 +246,11 @@ fn bind_listener(addr: SocketAddr) -> std::io::Result<std::net::TcpListener> {
     use socket2::{Domain, Protocol, Socket, Type};
     let sock = Socket::new(Domain::for_address(addr), Type::STREAM, Some(Protocol::TCP))?;
     sock.set_reuse_address(true)?;
+    // cluster workers (separate processes) share the port through the kernel.
+    #[cfg(unix)]
+    if std::env::var("KESTREL_REUSEPORT").is_ok() {
+        sock.set_reuse_port(true)?;
+    }
     sock.set_nodelay(true)?;
     sock.bind(&addr.into())?;
     sock.listen(4096)?;

@@ -6,10 +6,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use deno_core::{op2, OpState};
+use deno_core::v8;
 use deno_error::JsErrorBox;
 use serde::Serialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 
 fn io_code(e: &std::io::Error) -> &'static str {
     match e.kind() {
@@ -198,6 +198,8 @@ pub fn op_net_listen(state: &mut OpState, #[string] host: &str, port: u16) -> Re
         use socket2::{Domain, Protocol, Socket, Type};
         let sock = Socket::new(Domain::for_address(addr), Type::STREAM, Some(Protocol::TCP)).map_err(|e| net_err(e, "socket"))?;
         let _ = sock.set_reuse_address(true);
+        #[cfg(unix)]
+        if std::env::var("KESTREL_REUSEPORT").is_ok() { let _ = sock.set_reuse_port(true); }
         sock.bind(&addr.into()).map_err(|e| net_err(e, "bind"))?;
         sock.listen(1024).map_err(|e| net_err(e, "listen"))?;
         sock.set_nonblocking(true).map_err(|e| net_err(e, "listen"))?;
@@ -605,4 +607,176 @@ pub async fn op_dns_lookup(#[string] host: String) -> Result<Vec<(String, u8)>, 
     let mut out: Vec<(String, u8)> = addrs.map(|a| (a.ip().to_string(), if a.is_ipv4() { 4 } else { 6 })).collect();
     out.dedup();
     Ok(out)
+}
+
+// ---------- dgram (UDP) ----------
+
+#[derive(Default)]
+struct Udp {
+    next: u32,
+    socks: HashMap<u32, Rc<tokio::net::UdpSocket>>,
+}
+fn udp(state: &mut OpState) -> &mut Udp {
+    if state.try_borrow::<Udp>().is_none() {
+        state.put(Udp::default());
+    }
+    state.borrow_mut::<Udp>()
+}
+
+#[op2(fast)]
+pub fn op_udp_bind(state: &mut OpState, #[string] host: &str, port: u16, reuse: bool) -> Result<u32, JsErrorBox> {
+    let addr: std::net::SocketAddr = format!("{host}:{port}").parse().map_err(|e| JsErrorBox::type_error(format!("bad address: {e}")))?;
+    let std_s = {
+        use socket2::{Domain, Protocol, Socket, Type};
+        let sock = Socket::new(Domain::for_address(addr), Type::DGRAM, Some(Protocol::UDP)).map_err(|e| net_err(e, "socket"))?;
+        if reuse { let _ = sock.set_reuse_address(true); #[cfg(unix)] let _ = sock.set_reuse_port(true); }
+        let _ = sock.set_broadcast(true);
+        sock.bind(&addr.into()).map_err(|e| net_err(e, "bind"))?;
+        sock.set_nonblocking(true).map_err(|e| net_err(e, "bind"))?;
+        std::net::UdpSocket::from(sock)
+    };
+    let s = tokio::net::UdpSocket::from_std(std_s).map_err(|e| net_err(e, "bind"))?;
+    let u = udp(state);
+    let rid = u.next;
+    u.next += 1;
+    u.socks.insert(rid, Rc::new(s));
+    Ok(rid)
+}
+
+#[op2]
+pub async fn op_udp_send(state: Rc<RefCell<OpState>>, rid: u32, #[string] host: String, port: u16, #[buffer(copy)] data: Vec<u8>) -> Result<u32, JsErrorBox> {
+    let s = { let mut st = state.borrow_mut(); udp(&mut st).socks.get(&rid).cloned() }.ok_or_else(|| JsErrorBox::new("Error", "ERR_SOCKET_DGRAM_NOT_RUNNING: Not running"))?;
+    let n = s.send_to(&data, (host.as_str(), port)).await.map_err(|e| net_err(e, "send"))?;
+    Ok(n as u32)
+}
+
+/// [bytes(base64-free: returned as JsBuffer in `data`), address, port]
+#[derive(Serialize)]
+pub struct Datagram {
+    data: deno_core::ToJsBuffer,
+    address: String,
+    port: u16,
+    family: String,
+}
+
+#[op2]
+#[serde]
+pub async fn op_udp_recv(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Option<Datagram>, JsErrorBox> {
+    let s = { let mut st = state.borrow_mut(); udp(&mut st).socks.get(&rid).cloned() };
+    let Some(s) = s else { return Ok(None) };
+    let mut buf = vec![0u8; 65536];
+    let (n, from) = s.recv_from(&mut buf).await.map_err(|e| net_err(e, "recv"))?;
+    buf.truncate(n);
+    Ok(Some(Datagram { data: buf.into(), address: from.ip().to_string(), port: from.port(), family: if from.is_ipv4() { "IPv4".into() } else { "IPv6".into() } }))
+}
+
+#[op2]
+#[serde]
+pub fn op_udp_addr(state: &mut OpState, rid: u32) -> Option<(String, u16)> {
+    udp(state).socks.get(&rid).and_then(|s| s.local_addr().ok()).map(|a| (a.ip().to_string(), a.port()))
+}
+
+#[op2(fast)]
+pub fn op_udp_close(state: &mut OpState, rid: u32) {
+    udp(state).socks.remove(&rid);
+}
+
+// ---------- v8 / vm ----------
+
+#[derive(Serialize)]
+pub struct HeapStats {
+    total_heap_size: f64,
+    total_heap_size_executable: f64,
+    total_physical_size: f64,
+    total_available_size: f64,
+    used_heap_size: f64,
+    heap_size_limit: f64,
+    malloced_memory: f64,
+    peak_malloced_memory: f64,
+    external_memory: f64,
+    number_of_native_contexts: f64,
+    number_of_detached_contexts: f64,
+}
+
+#[op2]
+#[serde]
+pub fn op_v8_heap_stats(scope: &mut v8::PinScope) -> HeapStats {
+    let hs = scope.get_heap_statistics();
+    HeapStats {
+        total_heap_size: hs.total_heap_size() as f64,
+        total_heap_size_executable: hs.total_heap_size_executable() as f64,
+        total_physical_size: hs.total_physical_size() as f64,
+        total_available_size: hs.total_available_size() as f64,
+        used_heap_size: hs.used_heap_size() as f64,
+        heap_size_limit: hs.heap_size_limit() as f64,
+        malloced_memory: hs.malloced_memory() as f64,
+        peak_malloced_memory: hs.peak_malloced_memory() as f64,
+        external_memory: hs.external_memory() as f64,
+        number_of_native_contexts: hs.number_of_native_contexts() as f64,
+        number_of_detached_contexts: hs.number_of_detached_contexts() as f64,
+    }
+}
+
+macro_rules! tc_err {
+    ($tc:expr) => {{
+        let msg = $tc.message().map(|m| m.get($tc).to_rust_string_lossy($tc)).unwrap_or_else(|| "script error".to_string());
+        let name = if msg.contains("SyntaxError") { "SyntaxError" } else { "Error" };
+        JsErrorBox::new(name, msg)
+    }};
+}
+
+/// vm.runInThisContext: compile `code` as a classic script named `filename` and run it.
+#[op2]
+pub fn op_vm_run_in_this_context<'a>(scope: &mut v8::PinScope<'a, '_>, #[string] code: &str, #[string] filename: &str) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
+    let src = v8::String::new(scope, code).ok_or_else(|| JsErrorBox::generic("source too long"))?;
+    let name = v8::String::new(scope, filename).unwrap();
+    let origin = v8::ScriptOrigin::new(scope, name.into(), 0, 0, false, 0, None, false, false, false, None);
+    v8::tc_scope!(let tc, scope);
+    let script = v8::Script::compile(tc, src, Some(&origin));
+    let Some(script) = script else { return Err(tc_err!(tc)); };
+    match script.run(tc) {
+        Some(v) => Ok(v),
+        None => Err(tc_err!(tc)),
+    }
+}
+
+/// vm.runInNewContext: a fresh context whose global gets the sandbox's own properties;
+/// after the run they are copied back onto the sandbox. Returns the completion value.
+#[op2]
+pub fn op_vm_run_in_new_context<'a>(scope: &mut v8::PinScope<'a, '_>, #[string] code: &str, sandbox: v8::Local<v8::Object>, #[string] filename: &str) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
+    let ctx = v8::Context::new(scope, Default::default());
+    let result = {
+        let cs = &mut v8::ContextScope::new(scope, ctx);
+        let global = ctx.global(cs);
+        // Copy sandbox properties into the new global.
+        let names = sandbox.get_own_property_names(cs, Default::default()).ok_or_else(|| JsErrorBox::generic("sandbox"))?;
+        for i in 0..names.length() {
+            if let Some(k) = names.get_index(cs, i) {
+                if let Some(v) = sandbox.get(cs, k) {
+                    global.set(cs, k, v);
+                }
+            }
+        }
+        let src = v8::String::new(cs, code).ok_or_else(|| JsErrorBox::generic("source too long"))?;
+        let name = v8::String::new(cs, filename).unwrap();
+        let origin = v8::ScriptOrigin::new(cs, name.into(), 0, 0, false, 0, None, false, false, false, None);
+        v8::tc_scope!(let tc, cs);
+        let r = match v8::Script::compile(tc, src, Some(&origin)) {
+            Some(s) => s.run(tc),
+            None => None,
+        };
+        let r = match r { Some(v) => v, None => return Err(tc_err!(tc)) };
+        // Copy the global's own properties back to the sandbox.
+        if let Some(gnames) = global.get_own_property_names(tc, Default::default()) {
+            for i in 0..gnames.length() {
+                if let Some(k) = gnames.get_index(tc, i) {
+                    if let Some(v) = global.get(tc, k) {
+                        sandbox.set(tc, k, v);
+                    }
+                }
+            }
+        }
+        v8::Global::new(tc, r)
+    };
+    Ok(v8::Local::new(scope, result))
 }
