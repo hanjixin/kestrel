@@ -75,13 +75,58 @@ export class Cipheriv extends CipherBase { constructor(a, k, iv, o) { super(a, k
 export class Decipheriv extends CipherBase { constructor(a, k, iv, o) { super(a, k, iv, false, o); } }
 export function createCipheriv(algo, key, iv, opts) { return new Cipheriv(algo, key, iv, opts); }
 export function createDecipheriv(algo, key, iv, opts) { return new Decipheriv(algo, key, iv, opts); }
-export function createSign() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.createSign (RSA/ECDSA) is not implemented in kestrel yet"); }
-export function createVerify() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.createVerify (RSA/ECDSA) is not implemented in kestrel yet"); }
-export function generateKeyPairSync() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.generateKeyPair is not implemented in kestrel yet"); }
+// ---- asymmetric: KeyObject, generateKeyPair, sign/verify (RSA PKCS#1 v1.5 / PSS, ECDSA P-256) ----
+const pemOf = (k) => (k instanceof KeyObject ? k._pem : typeof k === "string" ? k : k && k.key !== undefined ? pemOf(k.key) : Buffer.from(k).toString());
+export class KeyObject {
+  constructor(type, pem, info) { this.type = type; this._pem = pem; this.asymmetricKeyType = info.kind; this.asymmetricKeyDetails = info.kind === "rsa" ? { modulusLength: info.bits } : { namedCurve: "prime256v1" }; }
+  export(opts = {}) { if (opts.format === "der") throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "DER export is not supported yet"); return this._pem; }
+  equals(o) { return o instanceof KeyObject && o._pem === this._pem; }
+  get symmetricKeySize() { return undefined; }
+}
+export function createPrivateKey(key) { const pem = pemOf(key); const info = ops.op_key_info(pem); if (!info.is_private) throw nodeError("ERR_CRYPTO_INVALID_KEY_OBJECT_TYPE", "not a private key", TypeError); return new KeyObject("private", pem, info); }
+export function createPublicKey(key) { const pem = pemOf(key); const info = ops.op_key_info(pem); return new KeyObject("public", pem, info); }
+function encodeKey(pem, enc) { return !enc ? null : enc.format === "pem" || enc.format === undefined ? pem : (() => { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "only PEM key encoding is supported yet"); })(); }
+export function generateKeyPairSync(type, options = {}) {
+  type = String(type).toLowerCase();
+  const kind = type === "rsa" || type === "rsa-pss" ? "rsa" : type === "ec" ? "ec" : null;
+  if (!kind) throw nodeError("ERR_INVALID_ARG_VALUE", "generateKeyPair: only 'rsa' and 'ec' (P-256) are supported yet");
+  if (kind === "ec" && options.namedCurve && !/^(prime256v1|P-256|secp256r1)$/i.test(options.namedCurve)) throw nodeError("ERR_INVALID_ARG_VALUE", "only P-256 is supported yet");
+  const kp = ops.op_keygen(kind, kind === "rsa" ? (options.modulusLength ?? 2048) : 0);
+  const pubInfo = ops.op_key_info(kp.public_pem), privInfo = ops.op_key_info(kp.private_pem);
+  const publicKey = options.publicKeyEncoding ? encodeKey(kp.public_pem, options.publicKeyEncoding) : new KeyObject("public", kp.public_pem, pubInfo);
+  const privateKey = options.privateKeyEncoding ? encodeKey(kp.private_pem, options.privateKeyEncoding) : new KeyObject("private", kp.private_pem, privInfo);
+  return { publicKey, privateKey };
+}
+export function generateKeyPair(type, options, cb) { if (typeof options === "function") { cb = options; options = {}; } let r, err = null; try { r = generateKeyPairSync(type, options); } catch (e) { err = e; } queueMicrotask(() => (err ? cb(err) : cb(null, r.publicKey, r.privateKey))); }
+generateKeyPair[Symbol.for("nodejs.util.promisify.custom")] = (type, options) => new Promise((res, rej) => generateKeyPair(type, options, (e, publicKey, privateKey) => (e ? rej(e) : res({ publicKey, privateKey }))));
+function schemeFor(key, algorithm) {
+  const pem = pemOf(key); const info = ops.op_key_info(pem);
+  const padding = key && typeof key === "object" && !(key instanceof KeyObject) ? key.padding : undefined;
+  const scheme = info.kind === "ec" ? "ecdsa" : padding === constants.RSA_PKCS1_PSS_PADDING ? "rsa-pss" : "rsa-pkcs1";
+  let digest = String(algorithm ?? (info.kind === "ec" ? "sha256" : "sha256")).toLowerCase().replace(/^rsa-/, "").replace("-", "");
+  return { pem, scheme, digest };
+}
+class SignBase {
+  #algo; #chunks = [];
+  constructor(algo) { this.#algo = algo; }
+  update(data, enc) { this.#chunks.push(bytesOf(data, enc)); return this; }
+  _data() { return Buffer.concat(this.#chunks); }
+  _algo() { return this.#algo; }
+}
+export class Sign extends SignBase {
+  sign(key, enc) { const { pem, scheme, digest } = schemeFor(key, this._algo()); const sig = Buffer.from(ops.op_sign(scheme, digest, pem, this._data())); return enc ? sig.toString(enc) : sig; }
+}
+export class Verify extends SignBase {
+  verify(key, signature, enc) { const { pem, scheme, digest } = schemeFor(key, this._algo()); return ops.op_verify(scheme, digest, pem, this._data(), typeof signature === "string" ? Buffer.from(signature, enc || "hex") : toUint8(signature)); }
+}
+export function createSign(algo) { return new Sign(algo); }
+export function createVerify(algo) { return new Verify(algo); }
+export function sign(algorithm, data, key, cb) { const r = new Sign(algorithm).update(data).sign(key); if (cb) { queueMicrotask(() => cb(null, r)); return; } return r; }
+export function verify(algorithm, data, key, signature, cb) { const r = new Verify(algorithm).update(data).verify(key, signature); if (cb) { queueMicrotask(() => cb(null, r)); return; } return r; }
 export function generateKeySync(type, { length }) { return { type: "secret", export: () => randomBytes(length / 8), symmetricKeySize: length / 8 }; }
 export function createSecretKey(key, enc) { const k = bytesOf(key, enc); return { type: "secret", symmetricKeySize: k.length, export: () => Buffer.from(k), _raw: k }; }
 export function getCipherInfo(name) { const s = CIPHERS[String(name).toLowerCase()]; return s ? { name: String(name).toLowerCase(), keyLength: s[0], ivLength: s[1], mode: s[2] ? "gcm" : name.includes("cbc") ? "cbc" : "ctr" } : undefined; }
-export const constants = {};
+export const constants = { RSA_PKCS1_PADDING: 1, RSA_NO_PADDING: 3, RSA_PKCS1_OAEP_PADDING: 4, RSA_PKCS1_PSS_PADDING: 6, RSA_PSS_SALTLEN_DIGEST: -1, RSA_PSS_SALTLEN_MAX_SIGN: -2, RSA_PSS_SALTLEN_AUTO: -2 };
 
 const algName = (a) => (typeof a === "string" ? a : a.name).toUpperCase();
 const hashName = (h) => String(typeof h === "string" ? h : h.name).toLowerCase().replace("-", "");
@@ -129,5 +174,5 @@ export { CryptoKey };
 export const webcrypto = { subtle, getRandomValues, randomUUID, get [Symbol.toStringTag]() { return "Crypto"; } };
 export { subtle };
 
-const crypto = { createHash, createHmac, hash, getHashes, getCiphers, getCurves, randomBytes, randomFillSync, randomFill, randomUUID, randomInt, getRandomValues, timingSafeEqual, pbkdf2Sync, pbkdf2, scryptSync, scrypt, hkdfSync, hkdf, createCipheriv, createDecipheriv, Cipheriv, Decipheriv, createSign, createVerify, generateKeyPairSync, generateKeySync, createSecretKey, getCipherInfo, constants, webcrypto, subtle, CryptoKey, Hash, Hmac };
+const crypto = { createHash, createHmac, hash, getHashes, getCiphers, getCurves, randomBytes, randomFillSync, randomFill, randomUUID, randomInt, getRandomValues, timingSafeEqual, pbkdf2Sync, pbkdf2, scryptSync, scrypt, hkdfSync, hkdf, createCipheriv, createDecipheriv, Cipheriv, Decipheriv, createSign, createVerify, Sign, Verify, sign, verify, generateKeyPairSync, generateKeyPair, generateKeySync, createSecretKey, createPrivateKey, createPublicKey, KeyObject, getCipherInfo, constants, webcrypto, subtle, CryptoKey, Hash, Hmac };
 export default crypto;

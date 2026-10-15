@@ -80,3 +80,16 @@ pipeline(Readable.from(["ab", "cd", "ef"]), upper, new (require("stream").Writab
   const br = zlib.brotliCompressSync("brotli brotli brotli");
   console.log(JSON.stringify([key.toString("hex"), ct.toString("hex"), tag.toString("hex"), pt, cbcCt, crypto.scryptSync("pw", "salt", 16, { N: 1024 }).toString("hex"), Buffer.from(crypto.hkdfSync("sha256", "ikm", "salt", "info", 16)).toString("hex"), zlib.brotliDecompressSync(br).toString(), br.length < 20]));
 }
+// --- appended: asymmetric crypto (deterministic parts compared with node) ---
+{
+  const crypto = require("crypto");
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", { modulusLength: 2048, publicKeyEncoding: { type: "spki", format: "pem" }, privateKeyEncoding: { type: "pkcs8", format: "pem" } });
+  const sig = crypto.createSign("SHA256").update("payload").sign(privateKey);
+  const ok = crypto.createVerify("SHA256").update("payload").verify(publicKey, sig);
+  const bad = crypto.createVerify("SHA256").update("tampered").verify(publicKey, sig);
+  const ec = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const esig = crypto.sign("sha256", Buffer.from("ec-payload"), ec.privateKey);
+  const eok = crypto.verify("sha256", Buffer.from("ec-payload"), ec.publicKey, esig);
+  const pubObj = crypto.createPublicKey(publicKey);
+  console.log(JSON.stringify([publicKey.startsWith("-----BEGIN PUBLIC KEY-----"), privateKey.startsWith("-----BEGIN PRIVATE KEY-----"), sig.length, ok, bad, eok, pubObj.type, pubObj.asymmetricKeyType, pubObj.asymmetricKeyDetails.modulusLength, ec.publicKey.asymmetricKeyType]));
+}

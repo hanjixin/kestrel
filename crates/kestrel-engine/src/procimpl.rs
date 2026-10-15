@@ -511,3 +511,128 @@ pub fn op_cipher(#[string] algo: &str, encrypt: bool, #[buffer] key: &[u8], #[bu
         a => Err(bad(&format!("Unknown cipher: {a}"))),
     }
 }
+
+// ---------- asymmetric keys (RSA PKCS#1 v1.5 / PSS, ECDSA P-256) ----------
+
+#[derive(Serialize)]
+pub struct KeyPair {
+    public_pem: String,
+    private_pem: String,
+}
+
+/// `kind`: "rsa" (param = modulus bits) or "ec" (param ignored; P-256).
+#[op2]
+#[serde]
+pub fn op_keygen(#[string] kind: &str, param: u32) -> Result<KeyPair, JsErrorBox> {
+    use rsa::pkcs8::{EncodePrivateKey, EncodePublicKey};
+    match kind {
+        "rsa" => {
+            let mut rng = rand_core::OsRng;
+            let bits = if param == 0 { 2048 } else { param as usize };
+            let sk = rsa::RsaPrivateKey::new(&mut rng, bits).map_err(generic)?;
+            let pk = rsa::RsaPublicKey::from(&sk);
+            Ok(KeyPair {
+                public_pem: pk.to_public_key_pem(rsa::pkcs8::LineEnding::LF).map_err(generic)?,
+                private_pem: sk.to_pkcs8_pem(rsa::pkcs8::LineEnding::LF).map_err(generic)?.to_string(),
+            })
+        }
+        "ec" => {
+            let sk = p256::SecretKey::random(&mut rand_core::OsRng);
+            let pk = sk.public_key();
+            Ok(KeyPair {
+                public_pem: pk.to_public_key_pem(p256::pkcs8::LineEnding::LF).map_err(generic)?,
+                private_pem: sk.to_pkcs8_pem(p256::pkcs8::LineEnding::LF).map_err(generic)?.to_string(),
+            })
+        }
+        k => Err(JsErrorBox::type_error(format!("unsupported key type {k}"))),
+    }
+}
+
+#[derive(Serialize)]
+pub struct KeyInfo {
+    kind: String,
+    is_private: bool,
+    bits: u32,
+}
+
+#[op2]
+#[serde]
+pub fn op_key_info(#[string] pem: &str) -> Result<KeyInfo, JsErrorBox> {
+    use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey};
+    use rsa::traits::PublicKeyParts;
+    if let Ok(k) = rsa::RsaPrivateKey::from_pkcs8_pem(pem) { return Ok(KeyInfo { kind: "rsa".into(), is_private: true, bits: k.size() as u32 * 8 }); }
+    if let Ok(k) = rsa::pkcs1::DecodeRsaPrivateKey::from_pkcs1_pem(pem).map(|k: rsa::RsaPrivateKey| k) { return Ok(KeyInfo { kind: "rsa".into(), is_private: true, bits: k.size() as u32 * 8 }); }
+    if let Ok(k) = rsa::RsaPublicKey::from_public_key_pem(pem) { return Ok(KeyInfo { kind: "rsa".into(), is_private: false, bits: k.size() as u32 * 8 }); }
+    if let Ok(k) = rsa::pkcs1::DecodeRsaPublicKey::from_pkcs1_pem(pem).map(|k: rsa::RsaPublicKey| k) { return Ok(KeyInfo { kind: "rsa".into(), is_private: false, bits: k.size() as u32 * 8 }); }
+    if p256::SecretKey::from_pkcs8_pem(pem).is_ok() || p256::SecretKey::from_sec1_pem(pem).is_ok() { return Ok(KeyInfo { kind: "ec".into(), is_private: true, bits: 256 }); }
+    if p256::PublicKey::from_public_key_pem(pem).is_ok() { return Ok(KeyInfo { kind: "ec".into(), is_private: false, bits: 256 }); }
+    Err(JsErrorBox::type_error("unsupported or malformed key (PEM: PKCS#8, PKCS#1, SPKI, SEC1; RSA or P-256)"))
+}
+
+fn rsa_private(pem: &str) -> Result<rsa::RsaPrivateKey, JsErrorBox> {
+    use rsa::pkcs1::DecodeRsaPrivateKey;
+    use rsa::pkcs8::DecodePrivateKey;
+    rsa::RsaPrivateKey::from_pkcs8_pem(pem).or_else(|_| rsa::RsaPrivateKey::from_pkcs1_pem(pem)).map_err(|e| JsErrorBox::type_error(format!("bad RSA private key: {e}")))
+}
+fn rsa_public(pem: &str) -> Result<rsa::RsaPublicKey, JsErrorBox> {
+    use rsa::pkcs1::DecodeRsaPublicKey;
+    use rsa::pkcs8::{DecodePrivateKey, DecodePublicKey};
+    if let Ok(k) = rsa::RsaPublicKey::from_public_key_pem(pem) { return Ok(k); }
+    if let Ok(k) = rsa::RsaPublicKey::from_pkcs1_pem(pem) { return Ok(k); }
+    rsa::RsaPrivateKey::from_pkcs8_pem(pem).map(|k| rsa::RsaPublicKey::from(&k)).map_err(|e| JsErrorBox::type_error(format!("bad RSA public key: {e}")))
+}
+
+/// `scheme`: "rsa-pkcs1" | "rsa-pss" | "ecdsa"; `digest`: sha256/sha384/sha512 (ECDSA: sha256).
+#[op2]
+#[buffer]
+pub fn op_sign(#[string] scheme: &str, #[string] digest: &str, #[string] key_pem: &str, #[buffer] data: &[u8]) -> Result<Vec<u8>, JsErrorBox> {
+    use rsa::signature::{RandomizedSigner, SignatureEncoding, Signer};
+    let d = digest.to_ascii_lowercase().replace('-', "");
+    match scheme {
+        "rsa-pkcs1" => {
+            let sk = rsa_private(key_pem)?;
+            macro_rules! go { ($h:ty) => {{ let s = rsa::pkcs1v15::SigningKey::<$h>::new(sk); Ok(s.sign(data).to_vec()) }}; }
+            match d.as_str() { "sha256" => go!(sha2::Sha256), "sha384" => go!(sha2::Sha384), "sha512" => go!(sha2::Sha512), _ => Err(JsErrorBox::type_error(format!("unsupported digest {digest}"))) }
+        }
+        "rsa-pss" => {
+            let sk = rsa_private(key_pem)?;
+            let mut rng = rand_core::OsRng;
+            macro_rules! go { ($h:ty) => {{ let s = rsa::pss::SigningKey::<$h>::new(sk); Ok(s.sign_with_rng(&mut rng, data).to_vec()) }}; }
+            match d.as_str() { "sha256" => go!(sha2::Sha256), "sha384" => go!(sha2::Sha384), "sha512" => go!(sha2::Sha512), _ => Err(JsErrorBox::type_error(format!("unsupported digest {digest}"))) }
+        }
+        "ecdsa" => {
+            use p256::pkcs8::DecodePrivateKey;
+            let sk = p256::SecretKey::from_pkcs8_pem(key_pem).or_else(|_| p256::SecretKey::from_sec1_pem(key_pem)).map_err(|e| JsErrorBox::type_error(format!("bad EC key: {e}")))?;
+            let signing = p256::ecdsa::SigningKey::from(sk);
+            let sig: p256::ecdsa::Signature = signing.sign(data);
+            Ok(sig.to_der().to_vec())
+        }
+        s => Err(JsErrorBox::type_error(format!("unsupported scheme {s}"))),
+    }
+}
+
+#[op2(fast)]
+pub fn op_verify(#[string] scheme: &str, #[string] digest: &str, #[string] key_pem: &str, #[buffer] data: &[u8], #[buffer] sig: &[u8]) -> Result<bool, JsErrorBox> {
+    use rsa::signature::Verifier;
+    let d = digest.to_ascii_lowercase().replace('-', "");
+    match scheme {
+        "rsa-pkcs1" => {
+            let pk = rsa_public(key_pem)?;
+            macro_rules! go { ($h:ty) => {{ let v = rsa::pkcs1v15::VerifyingKey::<$h>::new(pk); let s = match rsa::pkcs1v15::Signature::try_from(sig) { Ok(s) => s, Err(_) => return Ok(false) }; Ok(v.verify(data, &s).is_ok()) }}; }
+            match d.as_str() { "sha256" => go!(sha2::Sha256), "sha384" => go!(sha2::Sha384), "sha512" => go!(sha2::Sha512), _ => Err(JsErrorBox::type_error(format!("unsupported digest {digest}"))) }
+        }
+        "rsa-pss" => {
+            let pk = rsa_public(key_pem)?;
+            macro_rules! go { ($h:ty) => {{ let v = rsa::pss::VerifyingKey::<$h>::new(pk); let s = match rsa::pss::Signature::try_from(sig) { Ok(s) => s, Err(_) => return Ok(false) }; Ok(v.verify(data, &s).is_ok()) }}; }
+            match d.as_str() { "sha256" => go!(sha2::Sha256), "sha384" => go!(sha2::Sha384), "sha512" => go!(sha2::Sha512), _ => Err(JsErrorBox::type_error(format!("unsupported digest {digest}"))) }
+        }
+        "ecdsa" => {
+            use p256::pkcs8::DecodePublicKey;
+            let pk = p256::PublicKey::from_public_key_pem(key_pem).map_err(|e| JsErrorBox::type_error(format!("bad EC public key: {e}")))?;
+            let v = p256::ecdsa::VerifyingKey::from(pk);
+            let s = match p256::ecdsa::Signature::from_der(sig).or_else(|_| p256::ecdsa::Signature::from_slice(sig)) { Ok(s) => s, Err(_) => return Ok(false) };
+            Ok(v.verify(data, &s).is_ok())
+        }
+        s => Err(JsErrorBox::type_error(format!("unsupported scheme {s}"))),
+    }
+}

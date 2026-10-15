@@ -166,6 +166,7 @@ deno_core::extension!(
         super::procimpl::op_fd_open, super::procimpl::op_fd_close, super::procimpl::op_fd_read, super::procimpl::op_fd_write,
         super::procimpl::op_fd_stat, super::procimpl::op_fd_sync, super::procimpl::op_fd_truncate,
         super::procimpl::op_brotli, super::procimpl::op_pbkdf2, super::procimpl::op_scrypt, super::procimpl::op_hkdf, super::procimpl::op_cipher,
+        super::procimpl::op_keygen, super::procimpl::op_key_info, super::procimpl::op_sign, super::procimpl::op_verify,
         super::netimpl::op_net_connect, super::netimpl::op_net_read, super::netimpl::op_net_write, super::netimpl::op_net_shutdown,
         super::netimpl::op_net_close, super::netimpl::op_net_addr, super::netimpl::op_net_listen, super::netimpl::op_net_listen_addr,
         super::netimpl::op_net_accept, super::netimpl::op_net_close_listener, super::netimpl::op_tls_server_config,

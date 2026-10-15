@@ -26,7 +26,9 @@ This is the same bet a JIT makes, moved to load time. The difference from V8's o
 - **Snapshot rule**: anything computed while the bootstrap evaluates is frozen into the snapshot. Environment, TTY state, time origin, cwd and the worker id are therefore read lazily or filled in by `__kestrel_init` right before the main module runs.
 - **Legacy patterns**: `EventEmitter` and the stream classes are function constructors with prototype methods so `EventEmitter.call(this)` + `util.inherits` code works.
 
-Backlog: `child_process`, raw `net` sockets, `worker_threads.Worker`, fd-level `fs` and `fs.watch`, crypto ciphers/signatures, brotli, `https.createServer`, native addons. Each is engineering work on top of the existing ops layer.
+- **Processes, sockets, threads** (`procimpl.rs`, `netimpl.rs`): child processes on `tokio::process` with piped stdio read by async ops (sync variants use `std::process` with drain threads); TCP sockets as split read/write halves in a per-isolate table (the half in use is taken out of the table across the await, so reads and writes never contend); TLS clients via rustls; `worker_threads.Worker` is a second `Runtime` on its own thread whose isolate handle the parent keeps for `terminate()`, with a JSON message channel (typed arrays, Map/Set/Date/Error encoded) and worker-side `process.exit` implemented as `terminate_execution` on its own isolate. `https.createServer` and `Kestrel.serve({ tls })` terminate TLS in the connection task with `tokio-rustls` before hyper sees the stream.
+
+Backlog: native addons (N-API), asymmetric crypto (sign/verify, key pairs), `fs.watch`, Unix-domain sockets, `fork` IPC, `tls.createServer`.
 
 ## Tier 1: native tier (`kestrel-aot`)
 

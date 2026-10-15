@@ -26,15 +26,18 @@ A Linux build is produced in Docker (`target-linux/` for arm64, `target-linux-am
 
 ## Compatibility status
 
-Verified by `test/compat` (run with node and kestrel, outputs compared):
+Verified by `test/compat` (each file runs under node and kestrel and the outputs are compared):
 
-- `builtins.cjs`: path, fs, util.inspect/format, events, Buffer, crypto hashes/HMAC, zlib, URL/URLSearchParams, querystring, string_decoder, streams + pipeline, os, process, assert. Output is identical to Node 22.
-- `esm.mjs`: ESM importing builtins, JSON, CommonJS (default + named), `createRequire`, top-level await, `timers/promises`, `events.once`.
-- `npm.mjs`, `realworld.cjs`: unmodified packages from a real `node_modules`: marked (ESM-only, also via `require`), nanoid, jszip, pako, hash.js, is-url, inherits, docx, pptxgenjs, pdf-lib, pngjs, jpeg-js, image-size.
-- `http.mjs`, `serve.ts`: `http.createServer` request/response with bodies and headers, `http.get`, `fetch` (rustls), `Kestrel.serve` with JSON, byte bodies, custom headers, sync and async handlers.
+- `builtins.cjs`: path, fs, util.inspect/format, events, Buffer, crypto (hashes, HMAC, PBKDF2, scrypt, HKDF, AES-GCM/CBC/CTR), zlib (gzip, deflate, brotli), URL/URLSearchParams, querystring, string_decoder, streams + pipeline, os, process, assert. Output is identical to Node 22.
+- `proc.mjs`: child_process `spawn`/`exec`/`execFile`/`execSync`/`execFileSync`/`spawnSync` with piped stdio, exit codes, ENOENT; fd-level fs (`openSync`/`readSync`/`writeSync`/`fstatSync`/`ftruncateSync`, `fs.promises.open` FileHandle). Identical to Node.
+- `net.mjs`: `net.createServer` + `net.connect` echo, addresses, ECONNREFUSED. Identical.
+- `worker.mjs`: `worker_threads.Worker` with `workerData`, `postMessage` both ways, `process.exit` code in the worker. Identical.
+- `https.mjs`: `https.createServer` with a self-signed key/cert served by rustls, consumed by `fetch`. Identical.
+- `http.mjs`, `serve.ts`: `http.createServer` request/response with bodies and headers, `http.get`, `fetch`, `Kestrel.serve` with JSON, byte bodies, custom headers, sync and async handlers.
+- `esm.mjs`, `npm.mjs`, `realworld.cjs`: ESM ↔ CommonJS interop (both directions, including `require(esm)`), and unmodified packages from a real `node_modules`: marked, nanoid, jszip, pako, hash.js, is-url, inherits, docx, pptxgenjs, pdf-lib, pngjs, jpeg-js, image-size.
 - Scheduling order of `process.nextTick`, microtasks, `setImmediate` and timers matches Node.
 
-Builtins present: assert, buffer, crypto (hashes, HMAC, random; no ciphers/sign yet), events, fs (sync, callback, promises, read/write streams; no fd-level API or watch yet), http (server + client), https (client), module, os, path, process, querystring, readline (basic), stream, string_decoder, timers, tty, url, util, zlib (gzip/deflate; no brotli). Stubs that throw a clear error: child_process, net sockets, worker_threads.Worker, https server. Native addons (`.node`) are not supported.
+Builtins: assert, buffer, child_process, crypto, dns, events, fs (+promises, fd API, streams), http, https, module, net, os, path, process, querystring, readline, stream, string_decoder, timers, tls (client), tty, url, util, worker_threads, zlib. Known gaps: native addons (`.node`/N-API) are not supported; `crypto.createSign`/`createVerify` and asymmetric keys, `fs.watch`, Unix-domain sockets, `tls.createServer` (use `https`), and IPC for `child_process.fork` are not implemented yet and throw a clear `ERR_METHOD_NOT_IMPLEMENTED`.
 
 ## Measurements
 
@@ -92,7 +95,8 @@ What this says, honestly:
 
 ```
 crates/kestrel-cli      the `kestrel` binary
-crates/kestrel-engine   V8 host: Node resolution + loaders, TS stripping, ESM->CJS, snapshot, ops, HTTP/fetch backends
+crates/kestrel-engine   V8 host: Node resolution + loaders, TS stripping, ESM->CJS, snapshot, ops,
+                        HTTP/fetch/TLS backends, child processes, sockets, worker threads
   src/js/               bootstrap, globals, node/*.js builtins (all in the snapshot)
 crates/kestrel-aot      native tier: candidate selection, Cranelift codegen, dispatch table
 examples/               native-tier correctness suite and CPU benchmarks
