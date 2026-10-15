@@ -135,7 +135,41 @@ pub fn op_kestrel_worker_id() -> u32 {
 
 #[op2(fast)]
 pub fn op_kestrel_cpus() -> u32 {
-    std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(1)
+    physical_cpus()
+}
+
+/// Physical cores, not SMT threads: `workers: "auto"` uses this. A worker per SMT thread
+/// is past the knee on big hosts (128-vCPU EPYC: 64 workers served 1.47 M req/s at 4096
+/// connections, 128 workers 1.20 M), because two pollers on sibling threads share one
+/// core's cache and the kernel's TCP work for a socket runs on one of them anyway.
+pub fn physical_cpus() -> u32 {
+    let logical = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(1);
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(info) = std::fs::read_to_string("/proc/cpuinfo") {
+            let mut cores = std::collections::HashSet::new();
+            let (mut phys, mut core) = (None, None);
+            for line in info.lines() {
+                if let Some(v) = line.strip_prefix("physical id") { phys = v.split(':').nth(1).map(|x| x.trim().to_string()); }
+                else if let Some(v) = line.strip_prefix("core id") { core = v.split(':').nth(1).map(|x| x.trim().to_string()); }
+                else if line.is_empty() {
+                    if let (Some(p), Some(c)) = (phys.take(), core.take()) { cores.insert((p, c)); }
+                }
+            }
+            if let (Some(p), Some(c)) = (phys, core) { cores.insert((p, c)); }
+            if !cores.is_empty() && (cores.len() as u32) <= logical { return cores.len() as u32; }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut n: i32 = 0;
+        let mut len = std::mem::size_of::<i32>();
+        let name = c"hw.physicalcpu";
+        // SAFETY: sysctlbyname writes at most `len` bytes into `n`.
+        let r = unsafe { libc::sysctlbyname(name.as_ptr(), &mut n as *mut i32 as *mut libc::c_void, &mut len, std::ptr::null_mut(), 0) };
+        if r == 0 && n > 0 && (n as u32) <= logical { return n as u32; }
+    }
+    logical
 }
 
 deno_core::extension!(
