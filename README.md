@@ -63,23 +63,23 @@ HTTP hello world, `wrk -t2 -c256`, client and server on the same machine (`bench
 
 | server | req/s | p50 | p99 |
 |---|---|---|---|
-| node 22, 1 process | 129 k | 1.96 ms | 41 ms |
-| node 22 cluster, 10 processes | 218 k | 0.59 ms | 10.8 ms |
-| bun 1.3, 1 process | 275–282 k | 0.89 ms | 1.5–1.7 ms |
-| kestrel, 1 worker thread | 298 k | 0.85 ms | 0.95 ms |
+| node 22, 1 process | 133 k | 1.92 ms | 9.0 ms |
+| node 22 cluster, 10 processes | 221 k | 0.57 ms | 4.4 ms |
+| bun 1.3, 1 process | 277 k | 0.90 ms | 1.54 ms |
+| kestrel, 1 worker thread | 311 k | 0.82 ms | 0.93 ms |
 
 ### Linux x86_64, AMD EPYC 7542 (128 vCPU), Ubuntu 22.04, 2026-10-16
 
-Servers and `wrk` on the same host over loopback (the inter-node link of the test environment caps at 57 k req/s, so a separate load generator could not be used). `bench/remote/`, node 22.12, bun 1.4.3.
+Servers and `wrk` on the same host over loopback (the inter-node link of the test environment caps at 57 k req/s, so a separate load generator could not be used). `bench/remote/`, node 22.12, bun 1.4.3. Run-to-run spread on this host is about ±8 %; ranges below are from repeated runs.
 
 | server | 256 connections (`-t8`) | 4096 connections (`-t32`) |
 |---|---|---|
-| node, 1 process | 36 k | 34 k |
-| bun, 1 process | 78 k | 55–62 k |
-| kestrel, 1 worker thread | 77 k | 48–56 k |
-| node cluster, 128 processes | 402 k | 780–823 k |
-| bun `reusePort`, 128 processes | 463 k | 1.36 M |
-| kestrel, 128 worker threads, one process | 427 k | 1.09–1.41 M (three runs: 1.29 M, 1.29 M, 1.14 M) |
+| node, 1 process | 35–39 k (p99 275–400 ms) | 34–36 k |
+| bun, 1 process | 78–86 k (p99 4.2–6.0 ms) | 55–60 k (p99 88–114 ms) |
+| kestrel, 1 worker thread | 80–84 k (p99 3.6–4.8 ms) | 52–56 k (p99 120–620 ms) |
+| node cluster, 128 processes | 402–404 k | 780–822 k |
+| bun `reusePort`, 128 processes | 458–467 k | 1.21–1.37 M |
+| kestrel, 128 worker threads, one process | 426–449 k | 1.11–1.30 M |
 | kestrel raw hyper, no JS (ceiling) | 433 k | 1.40–1.56 M |
 
 CPU on the same host: `fib(35)` node 110 ms, bun 71 ms, kestrel V8-only 108 ms, native tier 70 ms; cold int-heavy benchmark kestrel V8-only 297 ms, native tier 155 ms.
@@ -88,8 +88,8 @@ What this says, honestly:
 
 - Startup and memory beat Node and Bun.
 - The native tier beats V8 on call-heavy and integer-heavy code (1.6× and 1.5×; 2.8× over Node on the cold benchmark). On float loops V8's TurboFan is already at the hardware's latency floor and the native tier ties it.
-- HTTP per core: ahead of Bun on macOS, at parity with Bun on Linux, about 2× Node on both.
-- HTTP on all cores: one kestrel process serves 1.4–1.7× what a 128-process Node cluster serves, and lands between 0.85× and 1.05× of Bun's 128-process `reusePort` setup depending on the run, with a higher tail latency (p99 6–13 ms vs 2.9 ms). The remaining gap to the raw-hyper ceiling is the JS handler itself plus GC pauses.
+- HTTP per core: 12 % ahead of Bun on macOS; on Linux ahead of Bun at 256 connections and 5–8 % behind at 4096 connections, where one kestrel thread also shows a much worse tail (p99 120–620 ms vs ~100 ms; the cause is not yet isolated, see `docs/ARCHITECTURE.md`). About 2.2× Node per core on both systems.
+- HTTP on all cores: one kestrel process serves 1.05× (256 connections) to 1.4× (4096 connections) what a 128-process Node cluster serves, and 0.92–0.98× of Bun's 128-process `reusePort` setup, with a higher tail (p99 ~12 ms vs 3.6 ms at 4096 connections). The remaining gap to the raw-hyper ceiling is the JS handler itself plus GC pauses.
 
 ## Layout
 
