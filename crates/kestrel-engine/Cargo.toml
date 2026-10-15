@@ -7,9 +7,39 @@ license.workspace = true
 [build-dependencies]
 deno_core.workspace = true
 deno_error = "0.7"
+bytes.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+anyhow.workspace = true
+oxc_allocator.workspace = true
+oxc_parser.workspace = true
+oxc_span.workspace = true
+oxc_semantic.workspace = true
+oxc_transformer.workspace = true
+oxc_codegen.workspace = true
+url = "2"
+base64 = "0.22"
+rand = "0.9"
+sha1 = "0.10"
+sha2 = "0.10"
+md-5 = "0.10"
+hmac = "0.12"
+flate2 = "1"
+libc = "0.2"
 
 [dependencies]
 kestrel-aot = { path = "../kestrel-aot" }
+serde = { version = "1", features = ["derive"] }
+url = "2"
+base64 = "0.22"
+rand = "0.9"
+sha1 = "0.10"
+sha2 = "0.10"
+md-5 = "0.10"
+hmac = "0.12"
+flate2 = "1"
+libc = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "gzip", "brotli", "http2"] }
 serde_json = "1"
 hyper.workspace = true
 hyper-util.workspace = true

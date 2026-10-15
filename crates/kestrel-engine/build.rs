@@ -2,6 +2,20 @@
 // parsing/evaluating runtime code on every launch.
 #[path = "src/ops.rs"]
 mod ops;
+#[path = "src/nodeimpl.rs"]
+mod nodeimpl;
+#[path = "src/resolve.rs"]
+mod resolve;
+#[path = "src/transpile.rs"]
+mod transpile;
+
+/// Snapshot-time stub; the real client lives in src/fetchimpl.rs.
+#[allow(dead_code)]
+mod fetchimpl {
+    #[derive(serde::Serialize)]
+    pub struct FetchResp { pub status: u16 }
+    pub async fn fetch(_: std::rc::Rc<std::cell::RefCell<deno_core::OpState>>, _: String, _: String, _: Vec<(String, String)>, _: Option<Vec<u8>>, _: bool) -> Result<FetchResp, deno_error::JsErrorBox> { unreachable!() }
+}
 
 /// Snapshot-time stubs; real implementations live in src/httpimpl.rs.
 #[allow(dead_code)]
@@ -12,7 +26,8 @@ mod httpimpl {
     use deno_error::JsErrorBox;
     pub fn listen(_: &mut OpState, _: &str, _: u16) -> Result<u32, JsErrorBox> { unreachable!() }
     pub async fn accept(_: Rc<RefCell<OpState>>, _: u32) -> Result<String, JsErrorBox> { unreachable!() }
-    pub fn respond(_: &mut OpState, _: u32, _: u16, _: &str, _: &str) -> Result<(), JsErrorBox> { unreachable!() }
+    pub fn respond(_: &mut OpState, _: u32, _: u16, _: &str, _: bytes::Bytes) -> Result<(), JsErrorBox> { unreachable!() }
+    pub async fn body(_: Rc<RefCell<OpState>>, _: u32) -> Result<Vec<u8>, JsErrorBox> { unreachable!() }
     pub fn headers(_: &mut OpState, _: u32) -> String { unreachable!() }
     pub fn spawn_workers(_: u32) -> Result<(), JsErrorBox> { unreachable!() }
     pub fn worker_id() -> u32 { 0 }
@@ -54,4 +69,6 @@ fn main() {
     }
     println!("cargo:rerun-if-changed=src/ops.rs");
     println!("cargo:rerun-if-changed=src/js/bootstrap.js");
+    println!("cargo:rerun-if-changed=src/js");
+    println!("cargo:rerun-if-changed=src/nodeimpl.rs");
 }

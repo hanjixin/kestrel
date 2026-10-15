@@ -1,4 +1,7 @@
+pub mod fetchimpl;
 pub mod httpimpl;
+pub mod nodeimpl;
+pub mod resolve;
 pub mod loader;
 /// Native dispatch table shared with the AOT tier.
 pub mod bridge {

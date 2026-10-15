@@ -20,7 +20,8 @@ use tokio::sync::{mpsc, oneshot};
 
 pub struct Outgoing {
     pub status: u16,
-    pub content_type: String,
+    /// Flattened "k\0v\0k\0v"; empty means text/plain.
+    pub headers: String,
     pub body: Bytes,
 }
 
@@ -28,12 +29,14 @@ pub struct IncomingReq {
     pub method: String,
     pub uri: String,
     pub headers: hyper::HeaderMap,
+    pub body: IncomingBody,
     pub respond: oneshot::Sender<Outgoing>,
 }
 
 struct Pending {
     headers: hyper::HeaderMap,
-    respond: oneshot::Sender<Outgoing>,
+    body: Option<IncomingBody>,
+    respond: Option<oneshot::Sender<Outgoing>>,
 }
 
 pub struct HttpServer {
@@ -134,12 +137,13 @@ pub fn listen(state: &mut OpState, host: &str, port: u16) -> Result<u32, JsError
                 let svc = service_fn(move |req: Request<IncomingBody>| {
                     let tx = tx.clone();
                     async move {
-                        let (parts, _body) = req.into_parts();
+                        let (parts, body) = req.into_parts();
                         let (rtx, rrx) = oneshot::channel();
                         let msg = IncomingReq {
                             method: parts.method.as_str().to_string(),
                             uri: parts.uri.to_string(),
                             headers: parts.headers,
+                            body,
                             respond: rtx,
                         };
                         if tx.send(msg).await.is_err() {
@@ -149,8 +153,15 @@ pub fn listen(state: &mut OpState, host: &str, port: u16) -> Result<u32, JsError
                             Ok(out) => {
                                 let mut resp = Response::new(Full::new(out.body));
                                 *resp.status_mut() = hyper::StatusCode::from_u16(out.status).unwrap_or(hyper::StatusCode::INTERNAL_SERVER_ERROR);
-                                if let Ok(v) = HeaderValue::from_str(&out.content_type) {
-                                    resp.headers_mut().insert(CONTENT_TYPE, v);
+                                if out.headers.is_empty() {
+                                    resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("text/plain;charset=UTF-8"));
+                                } else {
+                                    let mut it = out.headers.split('\0');
+                                    while let (Some(k), Some(v)) = (it.next(), it.next()) {
+                                        if let (Ok(name), Ok(val)) = (hyper::header::HeaderName::from_bytes(k.as_bytes()), HeaderValue::from_str(v)) {
+                                            resp.headers_mut().append(name, val);
+                                        }
+                                    }
                                 }
                                 Ok(resp)
                             }
@@ -160,6 +171,7 @@ pub fn listen(state: &mut OpState, host: &str, port: u16) -> Result<u32, JsError
                 });
                 let _ = hyper::server::conn::http1::Builder::new()
                     .keep_alive(true)
+                    .pipeline_flush(true)
                     .serve_connection(io, svc)
                     .await;
             });
@@ -173,35 +185,78 @@ pub fn listen(state: &mut OpState, host: &str, port: u16) -> Result<u32, JsError
     Ok(rid)
 }
 
-/// Wait for the next request. Returns "id\0METHOD\0uri".
+/// Wait for the next request(s). Returns one or more records "id\0METHOD\0uri"
+/// separated by "\n"; everything already queued is drained into one batch so a
+/// busy server pays for one async op per batch instead of per request.
 pub async fn accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<String, JsErrorBox> {
     let server = {
         let mut st = state.borrow_mut();
         let hs = state_mut(&mut st);
         hs.servers.get(&rid).cloned().ok_or_else(|| JsErrorBox::type_error("bad server id"))?
     };
-    let req = {
+    let mut batch: Vec<IncomingReq> = Vec::with_capacity(16);
+    {
         // Only one accept loop per server, so this borrow never contends.
         let mut s = server.borrow_mut();
-        s.rx.recv().await
-    };
-    let req = req.ok_or_else(|| JsErrorBox::generic("server closed"))?;
+        let first = s.rx.recv().await.ok_or_else(|| JsErrorBox::generic("server closed"))?;
+        batch.push(first);
+        while batch.len() < 128 {
+            match s.rx.try_recv() {
+                Ok(r) => batch.push(r),
+                Err(_) => break,
+            }
+        }
+    }
     let mut st = state.borrow_mut();
     let hs = state_mut(&mut st);
-    let id = hs.next_req;
-    hs.next_req = hs.next_req.wrapping_add(1);
-    hs.pending.insert(id, Pending { headers: req.headers, respond: req.respond });
-    let mut out = String::with_capacity(16 + req.method.len() + req.uri.len());
+    let mut out = String::with_capacity(batch.len() * 48);
     use std::fmt::Write;
-    let _ = write!(out, "{id}\0{}\0{}", req.method, req.uri);
+    for req in batch {
+        let id = hs.next_req;
+        hs.next_req = hs.next_req.wrapping_add(1);
+        hs.pending.insert(id, Pending { headers: req.headers, body: Some(req.body), respond: Some(req.respond) });
+        if !out.is_empty() {
+            out.push('\n');
+        }
+        let _ = write!(out, "{id}\0{}\0{}", req.method, req.uri);
+    }
     Ok(out)
 }
 
-pub fn respond(state: &mut OpState, id: u32, status: u16, content_type: &str, body: &str) -> Result<(), JsErrorBox> {
+pub fn respond(state: &mut OpState, id: u32, status: u16, headers: &str, body: Bytes) -> Result<(), JsErrorBox> {
     let hs = state_mut(state);
-    let p = hs.pending.remove(&id).ok_or_else(|| JsErrorBox::type_error("response already sent"))?;
-    let _ = p.respond.send(Outgoing { status, content_type: content_type.to_string(), body: Bytes::copy_from_slice(body.as_bytes()) });
+    let p = hs.pending.get_mut(&id).ok_or_else(|| JsErrorBox::type_error("response already sent"))?;
+    let tx = p.respond.take().ok_or_else(|| JsErrorBox::type_error("response already sent"))?;
+    let _ = tx.send(Outgoing { status, headers: headers.to_string(), body });
+    if p.body.is_none() {
+        hs.pending.remove(&id);
+    }
     Ok(())
+}
+
+/// Read the whole request body. The pending slot is freed once both body and response are done.
+pub async fn body(state: Rc<RefCell<OpState>>, id: u32) -> Result<Vec<u8>, JsErrorBox> {
+    let body = {
+        let mut st = state.borrow_mut();
+        let hs = state_mut(&mut st);
+        let p = hs.pending.get_mut(&id).ok_or_else(|| JsErrorBox::type_error("request body already consumed"))?;
+        p.body.take()
+    };
+    let out = match body {
+        Some(b) => {
+            use http_body_util::BodyExt;
+            b.collect().await.map(|c| c.to_bytes().to_vec()).map_err(|e| JsErrorBox::type_error(format!("body: {e}")))?
+        }
+        None => Vec::new(),
+    };
+    let mut st = state.borrow_mut();
+    let hs = state_mut(&mut st);
+    if let Some(p) = hs.pending.get(&id) {
+        if p.respond.is_none() {
+            hs.pending.remove(&id);
+        }
+    }
+    Ok(out)
 }
 
 /// Headers of a pending request as "k\0v\0k\0v…".

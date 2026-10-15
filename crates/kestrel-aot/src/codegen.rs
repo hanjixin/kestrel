@@ -705,6 +705,24 @@ impl<'x, 'a, 'b> FnCx<'x, 'a, 'b> {
                         }
                     }
                 }
+                // x % 2^k (|2^k| normal): fmod computed exactly in floating point as
+                // copysign(x - trunc(x * 2^-k) * 2^k, x). Every intermediate is exact.
+                if bin.operator == BinaryOperator::Remainder {
+                    if let Expression::NumericLiteral(n) = &bin.right {
+                        let d = n.value;
+                        if d.is_finite() && d != 0.0 && d.abs().log2().fract() == 0.0 && d.abs() <= 1e300 && d.abs() >= 1e-300 {
+                            let a = self.to_num(l);
+                            let inv = self.b.ins().f64const(1.0 / d);
+                            let dv = self.b.ins().f64const(d);
+                            let q = self.b.ins().fmul(a, inv);
+                            let t = self.b.ins().trunc(q);
+                            let m = self.b.ins().fmul(t, dv);
+                            let r = self.b.ins().fsub(a, m);
+                            let r = self.b.ins().fcopysign(r, a);
+                            return Ok(TVal { ty: Ty::Num, v: r });
+                        }
+                    }
+                }
                 let r = self.expr(&bin.right)?;
                 self.binary(bin.operator, l, r)
             }

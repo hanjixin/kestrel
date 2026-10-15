@@ -1,0 +1,21 @@
+// Real npm packages from the parent node_modules (CJS and ESM builds).
+import { marked } from "marked";
+import { nanoid, customAlphabet } from "nanoid";
+import JSZip from "jszip";
+import pako from "pako";
+import isUrl from "is-url";
+import { createRequire } from "node:module";
+const require = createRequire(import.meta.url);
+const inherits = require("inherits");
+const isarray = require("isarray");
+const hash = require("hash.js");
+console.log(marked.parse("# Hi\n\n**bold** and `code`").trim());
+console.log(nanoid().length, customAlphabet("abc", 5)().length);
+const zip = new JSZip();
+zip.file("a.txt", "hello zip");
+const buf = await zip.generateAsync({ type: "uint8array" });
+const back = await JSZip.loadAsync(buf);
+console.log(buf.length > 20, await back.file("a.txt").async("string"));
+const deflated = pako.deflate(new TextEncoder().encode("pako pako pako"));
+console.log(new TextDecoder().decode(pako.inflate(deflated)));
+console.log(isUrl("https://example.com/x"), isUrl("nope"), typeof inherits, isarray([]), hash.sha256().update("abc").digest("hex").slice(0, 16));
