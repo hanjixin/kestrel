@@ -187,5 +187,5 @@ deno_core::extension!(
         "node/fs.js", "node/fs_promises.js", "node/http.js", "node/https.js", "node/module.js", "node/net.js",
         "node/os.js", "node/path.js", "node/path_posix.js", "node/process.js", "node/querystring.js",
         "node/readline.js", "node/stream.js", "node/string_decoder.js", "node/timers.js", "node/timers_promises.js",
-        "node/tty.js", "node/url.js", "node/util.js", "node/util_types.js", "node/worker_threads.js", "node/zlib.js", "node/tls.js", "node/dns.js", "node/dns_promises.js", "node/dgram.js", "node/perf_hooks.js", "node/v8.js", "node/vm.js", "node/cluster.js", "node/constants.js", "node/sys.js"],
+        "node/tty.js", "node/url.js", "node/util.js", "node/util_types.js", "node/worker_threads.js", "node/zlib.js", "node/tls.js", "node/dns.js", "node/dns_promises.js", "node/dgram.js", "node/perf_hooks.js", "node/v8.js", "node/vm.js", "node/cluster.js", "node/constants.js", "node/sys.js", "node/async_hooks.js"],
 );

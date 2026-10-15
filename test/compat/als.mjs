@@ -1,0 +1,23 @@
+import { AsyncLocalStorage, AsyncResource } from "node:async_hooks";
+import { setTimeout as sleep } from "node:timers/promises";
+const als = new AsyncLocalStorage();
+const out = [];
+await als.run({ id: 1 }, async () => {
+  out.push(als.getStore().id);
+  await sleep(2);
+  out.push(als.getStore().id);
+  await new Promise((r) => setTimeout(r, 1));
+  out.push(als.getStore().id);
+  await new Promise((r) => setImmediate(r));
+  out.push(als.getStore().id);
+  await new Promise((r) => process.nextTick(r));
+  out.push(als.getStore().id);
+  als.run({ id: 2 }, () => { out.push(als.getStore().id); out.push(als.exit(() => als.getStore())); });
+  out.push(als.getStore().id);
+  const p = Promise.all([als.run({ id: 3 }, () => sleep(3).then(() => als.getStore().id)), als.run({ id: 4 }, () => sleep(1).then(() => als.getStore().id))]);
+  out.push((await p).join(","));
+  const bound = AsyncResource.bind(() => als.getStore().id);
+  await als.run({ id: 9 }, async () => { out.push(bound()); });
+});
+out.push(als.getStore());
+console.log(JSON.stringify(out));

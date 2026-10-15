@@ -36,6 +36,7 @@ import v8 from "ext:kestrel/node/v8.js";
 import vm from "ext:kestrel/node/vm.js";
 import cluster from "ext:kestrel/node/cluster.js";
 import constants from "ext:kestrel/node/constants.js";
+import async_hooks from "ext:kestrel/node/async_hooks.js";
 
 {
   const prevInit = globalThis.__kestrel_init;
@@ -45,7 +46,7 @@ import constants from "ext:kestrel/node/constants.js";
 const builtins = {
   assert, "assert/strict": assert.strict, buffer, child_process, crypto, events, fs, "fs/promises": fsPromises, http, https, module, net, os, path, "path/posix": path,
   process: globalThis.process, querystring, readline, stream, "stream/promises": stream.promises, string_decoder, timers, "timers/promises": timersPromises, tty, url, util, "util/types": utilTypes, worker_threads, zlib,
-  tls, dns, "dns/promises": dnsPromises, dgram, perf_hooks, v8, vm, cluster, constants, sys: util,
+  tls, dns, "dns/promises": dnsPromises, dgram, perf_hooks, v8, vm, cluster, constants, sys: util, async_hooks,
 };
 _registerBuiltins(builtins);
 globalThis[Symbol.for("kestrel.builtin")] = (name) => builtins[String(name).replace(/^node:/, "")];

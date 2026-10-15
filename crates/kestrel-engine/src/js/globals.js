@@ -63,15 +63,17 @@ class Timeout {
   [Symbol.toPrimitive]() { return this[kTimer]._timerId ?? 0; }
   [Symbol.dispose]() { this.close(); }
 }
-globalThis.setTimeout = (cb, ms, ...args) => { if (typeof cb !== "function") throw nodeError("ERR_INVALID_ARG_TYPE", 'The "callback" argument must be of type function', TypeError); return new Timeout(core.createTimer(cb, ms, args, false, true, false), false); };
-globalThis.setInterval = (cb, ms, ...args) => { if (typeof cb !== "function") throw nodeError("ERR_INVALID_ARG_TYPE", 'The "callback" argument must be of type function', TypeError); return new Timeout(core.createTimer(cb, ms, args, true, true, false), true); };
+// Callbacks run in the async context that scheduled them (AsyncLocalStorage propagation).
+const withCtx = (cb) => { const frame = core.getAsyncContext(); if (frame === undefined) return cb; return function (...a) { const prev = core.getAsyncContext(); core.setAsyncContext(frame); try { return cb.apply(this, a); } finally { core.setAsyncContext(prev); } }; };
+globalThis.setTimeout = (cb, ms, ...args) => { if (typeof cb !== "function") throw nodeError("ERR_INVALID_ARG_TYPE", 'The "callback" argument must be of type function', TypeError); return new Timeout(core.createTimer(withCtx(cb), ms, args, false, true, false), false); };
+globalThis.setInterval = (cb, ms, ...args) => { if (typeof cb !== "function") throw nodeError("ERR_INVALID_ARG_TYPE", 'The "callback" argument must be of type function', TypeError); return new Timeout(core.createTimer(withCtx(cb), ms, args, true, true, false), true); };
 globalThis.clearTimeout = (t) => { if (t && t[kTimer]) core.cancelTimer(t[kTimer]); };
 globalThis.clearInterval = globalThis.clearTimeout;
 const kRefed = core.kRefed;
 class Immediate {
   constructor(cb, args) {
     this._idleNext = null; this._idlePrev = null; this._destroyed = false;
-    this._onImmediate = args.length ? () => cb(...args) : cb;
+    this._onImmediate = withCtx(args.length ? () => cb(...args) : cb);
     this[kRefed] = false;
     core.queueImmediate(this);
     this.ref();
@@ -285,7 +287,7 @@ const process = {
   reallyExit(code) { ops.op_kestrel_exit((code ?? 0) | 0); },
   abort() { ops.op_kestrel_exit(134); },
   kill(pid, sig) { if (pid === process.pid) process.exit(sig === "SIGTERM" || sig === undefined ? 143 : 130); return true; },
-  nextTick(cb, ...args) { if (typeof cb !== "function") throw nodeError("ERR_INVALID_ARG_TYPE", 'The "callback" argument must be of type function', TypeError); core.queueNextTick({ callback: cb, args: args.length ? args : undefined, snapshot: undefined, asyncId: 0, triggerAsyncId: 0 }); },
+  nextTick(cb, ...args) { if (typeof cb !== "function") throw nodeError("ERR_INVALID_ARG_TYPE", 'The "callback" argument must be of type function', TypeError); core.queueNextTick({ callback: cb, args: args.length ? args : undefined, snapshot: core.getAsyncContext(), asyncId: 0, triggerAsyncId: 0 }); },
   cwd() { return ops.op_kestrel_cwd(); },
   chdir(d) { ops.op_k_chdir(String(d)); },
   umask(m) { return 0o22; },

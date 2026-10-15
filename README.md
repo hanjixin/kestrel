@@ -19,7 +19,8 @@ cargo build --release
 KESTREL_AOT_LOG=1 ./target/release/kestrel examples/aot_check.ts   # show what went native
 KESTREL_AOT=0     ./target/release/kestrel examples/aot_check.ts   # V8 only
 KESTREL_REQUIRE_LOG=1 ...                                          # trace require()
-KESTREL_V8_FLAGS="--single-threaded-gc --max-semi-space-size=32"   # default V8 flags
+KESTREL_YOUNG_MB=32 ...                                            # young-generation semi-space per isolate (default 32 main / 8 workers)
+KESTREL_V8_FLAGS="..." ...                                         # extra raw V8 flags
 ```
 
 A Linux build is produced in Docker (`target-linux/` for arm64, `target-linux-amd64/` for x86_64; see `bench/remote/run.sh`).
