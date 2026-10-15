@@ -27,11 +27,11 @@ export class Socket extends Duplex {
     if (options.fd !== undefined) throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "net.Socket from fd is not supported");
   }
   get readyState() { return this.connecting ? "opening" : this[kRid] !== null ? (this.writable ? "open" : "readOnly") : "closed"; }
-  _attach(rid, tls = false) {
+  _attach(rid, tls = false, startReading = true) {
     this[kRid] = rid; this[kTls] = tls; this.pending = false; this.connecting = false;
     const a = tls ? null : ops.op_net_addr(rid);
     if (a) { this.localAddress = a[0]; this.localPort = a[1]; this.remoteAddress = a[2]; this.remotePort = a[3]; this.remoteFamily = isIPv6(a[2]) ? "IPv6" : "IPv4"; }
-    this._readLoop();
+    if (startReading) this._readLoop();
     return this;
   }
   async _readLoop() {
@@ -70,8 +70,14 @@ export class Socket extends Duplex {
   connect(...args) {
     let options = {}, cb;
     if (typeof args[0] === "object" && args[0] !== null) { options = args[0]; cb = args[1]; }
+    else if (typeof args[0] === "string" && !/^\d+$/.test(args[0])) { options.path = args[0]; cb = args[1]; }
     else { options.port = args[0]; if (typeof args[1] === "string") { options.host = args[1]; cb = args[2]; } else cb = args[1]; }
-    if (options.path) throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "Unix domain sockets are not supported in kestrel yet");
+    if (options.path) {
+      if (cb) this.once("connect", cb);
+      this.connecting = true;
+      ops.op_net_connect_unix(String(options.path)).then((rid) => { this._attach(rid); this.emit("connect"); this.emit("ready"); }, (e) => { this.connecting = false; this.destroy(netError(e, "connect")); });
+      return this;
+    }
     const host = options.host || "localhost", port = Number(options.port);
     if (!Number.isInteger(port) || port < 0 || port > 65535) throw nodeError("ERR_SOCKET_BAD_PORT", 'Port should be >= 0 and < 65536. Received ' + options.port, RangeError);
     if (cb) this.once("connect", cb);
@@ -100,9 +106,10 @@ export class Server extends EventEmitter {
   }
   listen(...args) {
     let port = 0, host = "0.0.0.0", cb;
-    for (const a of args) { if (typeof a === "function") cb = a; else if (typeof a === "number" || (typeof a === "string" && /^\d+$/.test(a))) port = Number(a); else if (typeof a === "string") host = a; else if (a && typeof a === "object") { if (a.path) throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "Unix domain sockets are not supported"); port = a.port ?? port; host = a.host ?? host; } }
+    let path = null;
+    for (const a of args) { if (typeof a === "function") cb = a; else if (typeof a === "number" || (typeof a === "string" && /^\d+$/.test(a))) port = Number(a); else if (typeof a === "string") { if (a.includes("/")) path = a; else host = a; } else if (a && typeof a === "object") { if (a.path) path = a.path; port = a.port ?? port; host = a.host ?? host; } }
     if (cb) this.once("listening", cb);
-    try { this[kRid] = ops.op_net_listen(host === "localhost" ? "127.0.0.1" : host, port); }
+    try { this[kRid] = path ? ops.op_net_listen_unix(String(path)) : ops.op_net_listen(host === "localhost" ? "127.0.0.1" : host, port); }
     catch (e) { queueMicrotask(() => this.emit("error", netError(e, "listen", host, port))); return this; }
     this.listening = true;
     queueMicrotask(() => this.emit("listening"));
@@ -115,15 +122,15 @@ export class Server extends EventEmitter {
       for (;;) {
         const crid = await ops.op_net_accept(rid);
         if (crid === 0xffffffff || this[kRid] !== rid) return;
-        const sock = new Socket({ allowHalfOpen: this._options.allowHalfOpen });
-        sock._attach(crid);
+        const sock = this._wrapConnection ? await this._wrapConnection(crid) : new Socket({ allowHalfOpen: this._options.allowHalfOpen })._attach(crid);
+        if (!sock) continue;
         this._connections++;
         sock.once("close", () => { this._connections--; if (this._closing && this._connections === 0) this.emit("close"); });
         this.emit("connection", sock);
       }
     } catch (e) { if (this[kRid] === rid) this.emit("error", netError(e, "accept")); }
   }
-  address() { if (this[kRid] === null) return null; const a = ops.op_net_listen_addr(this[kRid]); return a ? { address: a[0], family: isIPv6(a[0]) ? "IPv6" : "IPv4", port: a[1] } : null; }
+  address() { if (this[kRid] === null) return null; const a = ops.op_net_listen_addr(this[kRid]); if (!a) return null; return a[1] === 0 && a[0].includes("/") ? a[0] : { address: a[0], family: isIPv6(a[0]) ? "IPv6" : "IPv4", port: a[1] }; }
   close(cb) {
     if (cb) this.once("close", cb);
     if (this[kRid] !== null) { ops.op_net_close_listener(this[kRid]); this[kRid] = null; }

@@ -14,6 +14,8 @@ mod esm2cjs;
 mod procimpl;
 #[path = "src/netimpl.rs"]
 mod netimpl;
+#[path = "src/watchimpl.rs"]
+mod watchimpl;
 
 /// Snapshot-time stubs for things netimpl reaches into.
 #[allow(dead_code)]

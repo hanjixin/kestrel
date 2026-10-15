@@ -64,6 +64,22 @@ pub fn set_handler(scope: &mut v8::PinScope, _state: Rc<RefCell<OpState>>, f: v8
     });
 }
 
+/// Body bytes of a V8 string: Latin-1 strings are copied byte-for-byte (valid UTF-8 when
+/// ASCII, which is the overwhelmingly common case for text bodies); others go through UTF-8.
+fn v8_string_bytes(scope: &mut v8::PinScope, s: v8::Local<v8::String>) -> Bytes {
+    if s.is_onebyte() && s.contains_only_onebyte() {
+        let len = s.length();
+        let mut v: Vec<u8> = Vec::with_capacity(len);
+        s.write_one_byte_uninit_v2(scope, 0, &mut v.spare_capacity_mut()[..len], v8::WriteFlags::empty());
+        // SAFETY: V8 filled exactly `len` bytes (one byte per Latin-1 code unit).
+        unsafe { v.set_len(len) };
+        if v.iter().all(|b| *b < 0x80) {
+            return Bytes::from(v);
+        }
+    }
+    Bytes::from(s.to_rust_string_lossy(scope))
+}
+
 /// Call the trampoline for request `id`. `Some(outgoing)` when the handler answered
 /// synchronously; `None` when it returned a promise (the `respond` op will finish it).
 ///
@@ -82,7 +98,8 @@ unsafe fn call_js(d: &Direct, id: u32) -> Option<Outgoing> {
     let Some(r) = f.call(scope, recv, &[arg]) else { return Some(err()) };
     if r.is_string() {
         // Fast path: 200 text/plain with a string body.
-        return Some(Outgoing { status: 200, headers: String::new(), body: Bytes::from(r.to_rust_string_lossy(scope)) });
+        let sv: v8::Local<v8::String> = r.try_into().ok()?;
+        return Some(Outgoing { status: 200, headers: String::new(), body: v8_string_bytes(scope, sv) });
     }
     if !r.is_array() {
         // Promise-returning handler: give already-settled promises a chance to run now.
@@ -96,7 +113,7 @@ unsafe fn call_js(d: &Direct, id: u32) -> Option<Outgoing> {
         _ => String::new(),
     };
     let body = match arr.get_index(scope, 2) {
-        Some(b) if b.is_string() => Bytes::from(b.to_rust_string_lossy(scope)),
+        Some(b) if b.is_string() => { let sv: v8::Local<v8::String> = b.try_into().ok()?; v8_string_bytes(scope, sv) }
         Some(b) if b.is_uint8_array() => {
             let u: v8::Local<v8::Uint8Array> = b.try_into().ok()?;
             let mut v = vec![0u8; u.byte_length()];

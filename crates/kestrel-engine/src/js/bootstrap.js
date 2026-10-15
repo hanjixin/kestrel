@@ -158,20 +158,24 @@ Object.assign(Request.prototype, { signal: null, redirect: "follow", credentials
 Object.defineProperties(Request.prototype, Object.getOwnPropertyDescriptors(BodyMixin));
 globalThis.Request = Request;
 
+const kHeaders = Symbol("kestrel.headers");
+const kHeadersInit = Symbol("kestrel.headersInit");
 class Response {
-  #headers = null; #headersInit = null;
   constructor(body = null, init = kEmpty) {
-    this.status = init.status ?? 200;
-    if (this.status < 200 || this.status > 599) throw new RangeError("The status provided (" + this.status + ") is outside the range [200, 599]");
-    this.statusText = init.statusText ?? "";
-    this.#headersInit = init.headers ?? null;
+    const status = init.status;
+    this.status = status === undefined ? 200 : status;
     this[kBody] = typeof body === "string" ? body : bodyToBytes(body);
-    this.type = "default"; this.url = init.url ?? ""; this.redirected = false;
-    if (init.__raw !== undefined) this._raw = init.__raw;
+    if (init !== kEmpty) {
+      if (this.status < 200 || this.status > 599) throw new RangeError("The status provided (" + this.status + ") is outside the range [200, 599]");
+      if (init.statusText !== undefined) this.statusText = init.statusText;
+      if (init.headers !== undefined) this[kHeadersInit] = init.headers;
+      if (init.url !== undefined) this.url = init.url;
+      if (init.__raw !== undefined) this._raw = init.__raw;
+    }
   }
   get ok() { return this.status >= 200 && this.status < 300; }
-  get headers() { if (this.#headers === null) this.#headers = new Headers(this.#headersInit); return this.#headers; }
-  get hasHeaders() { return this.#headers !== null || this.#headersInit !== null; }
+  get headers() { let h = this[kHeaders]; if (h === undefined) { h = new Headers(this[kHeadersInit]); this[kHeaders] = h; } return h; }
+  get hasHeaders() { return this[kHeaders] !== undefined || this[kHeadersInit] !== undefined; }
   async _bytes() { if (this[kBodyUsed]) throw new TypeError("Body is unusable: Body has already been read"); this[kBodyUsed] = true; return await drainBody(this[kBody]); }
   clone() { const r = new Response(this[kBody], { status: this.status, statusText: this.statusText, headers: this.headers }); r.url = this.url; return r; }
   static json(data, init = kEmpty) { const h = new Headers(init.headers); if (!h.has("content-type")) h.set("content-type", "application/json"); return new Response(JSON.stringify(data), { ...init, headers: h }); }
@@ -179,6 +183,7 @@ class Response {
   static redirect(u, status = 302) { return new Response(null, { status, headers: { location: String(u) } }); }
   get [Symbol.toStringTag]() { return "Response"; }
 }
+Object.assign(Response.prototype, { statusText: "", type: "default", url: "", redirected: false, _raw: undefined, [kHeaders]: undefined, [kHeadersInit]: undefined });
 Object.defineProperties(Response.prototype, Object.getOwnPropertyDescriptors(BodyMixin));
 globalThis.Response = Response;
 

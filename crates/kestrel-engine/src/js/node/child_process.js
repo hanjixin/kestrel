@@ -32,7 +32,9 @@ function buildOpts(file, args, options, shellDefault) {
     cmd = [file, ...argv].join(" ");
     argv = [];
   }
-  return { cmd, args: argv, cwd: options.cwd ? String(options.cwd) : null, env: envList(options.env), stdio: normStdio(options.stdio), shell: !!shell, detached: !!options.detached };
+  const stdioArr = Array.isArray(options.stdio) ? options.stdio : [options.stdio, options.stdio, options.stdio];
+  const ipc = !!options._ipc || stdioArr.includes("ipc");
+  return { cmd, args: argv, cwd: options.cwd ? String(options.cwd) : null, env: envList(options.env), stdio: normStdio(options.stdio), shell: !!shell, detached: !!options.detached, ipc };
 }
 
 export class ChildProcess extends EventEmitter {
@@ -44,8 +46,8 @@ export class ChildProcess extends EventEmitter {
   }
   _start(o, file, args) {
     this.spawnfile = file; this.spawnargs = [file, ...args];
-    let rid, pid;
-    try { [rid, pid] = ops.op_cp_spawn(o); }
+    let rid, pid, ipcFd = -1;
+    try { [rid, pid, ipcFd] = ops.op_cp_spawn(o); }
     catch (e) {
       const err = nodeError(/^([A-Z]+):/.exec(e.message)?.[1] ?? "ENOENT", e.message); err.syscall = "spawn " + file; err.path = file; err.spawnargs = args;
       queueMicrotask(() => { this.emit("error", err); this.emit("close", -2, null); });
@@ -70,6 +72,7 @@ export class ChildProcess extends EventEmitter {
     if (o.stdio[1] === "pipe") this.stdout = pipe(1);
     if (o.stdio[2] === "pipe") this.stderr = pipe(2);
     this.stdio = [this.stdin, this.stdout, this.stderr];
+    if (ipcFd >= 0) this._setupIpc(ipcFd);
     queueMicrotask(() => this.emit("spawn"));
     ops.op_cp_wait(rid).then(([code, sig]) => {
       this._exited = true;
@@ -82,7 +85,23 @@ export class ChildProcess extends EventEmitter {
   _close() { if (this._closed) return; this._closed = true; this.emit("close", this.exitCode, this.signalCode); }
   kill(signal = "SIGTERM") { if (this._rid === null) return false; const ok = ops.op_cp_kill(this._rid, sigNum(signal)); if (ok) this.killed = true; return ok; }
   ref() {} unref() {} disconnect() {}
-  send() { throw nodeError("ERR_IPC_CHANNEL_CLOSED", "IPC channels are not supported in kestrel yet"); }
+  _setupIpc(fd) {
+    this._ipc = ops.op_net_from_fd(fd); this.connected = true; this.channel = {};
+    (async () => {
+      let buf = "";
+      try {
+        for (;;) { const chunk = await ops.op_net_read(this._ipc); if (chunk.length === 0) break; buf += Buffer.from(chunk).toString("utf8"); let i; while ((i = buf.indexOf("\n")) !== -1) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line) this.emit("message", JSON.parse(line)); } }
+      } catch {}
+      if (this.connected) { this.connected = false; this.emit("disconnect"); }
+    })();
+  }
+  send(message, sendHandle, options, callback) {
+    if (typeof sendHandle === "function") { callback = sendHandle; sendHandle = undefined; } else if (typeof options === "function") { callback = options; options = undefined; }
+    if (!this.connected) { const e = nodeError("ERR_IPC_CHANNEL_CLOSED", "Channel closed"); if (callback) { queueMicrotask(() => callback(e)); return false; } throw e; }
+    ops.op_net_write(this._ipc, Buffer.from(JSON.stringify(message) + "\n")).then(() => callback && callback(null), (e) => { if (callback) callback(e); else this.emit("error", e); });
+    return true;
+  }
+  disconnect() { if (!this.connected) return; this.connected = false; ops.op_net_shutdown(this._ipc).then(() => {}, () => {}); this.emit("disconnect"); }
   [Symbol.dispose]() { this.kill(); }
 }
 
@@ -137,8 +156,8 @@ export function fork(modulePath, args, options) {
   if (!Array.isArray(args)) { options = args; args = []; }
   options = options || {};
   const execArgv = options.execArgv || [];
-  const child = spawn(options.execPath || globalThis.process.execPath, [...execArgv, String(modulePath), ...args], { ...options, stdio: options.silent ? "pipe" : "inherit" });
-  child.connected = false;
+  const stdio = options.stdio ? options.stdio : options.silent ? ["pipe", "pipe", "pipe", "ipc"] : ["inherit", "inherit", "inherit", "ipc"];
+  const child = spawn(options.execPath || globalThis.process.execPath, [...execArgv, String(modulePath), ...args], { ...options, stdio, _ipc: true });
   return child;
 }
 

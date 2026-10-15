@@ -25,6 +25,9 @@ pub struct SpawnOpts {
     pub stdio: Vec<String>,
     pub shell: bool,
     pub detached: bool,
+    /// Create a unix socketpair; the child gets its end as an inherited fd (KESTREL_IPC_FD).
+    #[serde(default)]
+    pub ipc: bool,
 }
 
 struct Child {
@@ -90,12 +93,26 @@ fn build_command(o: &SpawnOpts) -> std::process::Command {
     c
 }
 
-/// Returns [rid, pid]. Errors carry a Node-style code in the message.
+/// Returns [rid, pid, ipcFd(parent end, or -1)]. Errors carry a Node-style code in the message.
 #[op2]
 #[serde]
-pub fn op_cp_spawn(state: &mut OpState, #[serde] o: SpawnOpts) -> Result<(u32, u32), JsErrorBox> {
-    let cmd = tokio::process::Command::from(build_command(&o));
-    let mut cmd = cmd;
+pub fn op_cp_spawn(state: &mut OpState, #[serde] o: SpawnOpts) -> Result<(u32, u32, i32), JsErrorBox> {
+    let mut std_cmd = build_command(&o);
+    let mut parent_fd: i32 = -1;
+    #[cfg(unix)]
+    let mut child_end: Option<std::os::unix::net::UnixStream> = None;
+    #[cfg(unix)]
+    if o.ipc {
+        use std::os::unix::io::{AsRawFd, IntoRawFd};
+        let (a, b) = std::os::unix::net::UnixStream::pair().map_err(generic)?;
+        // Child end must survive exec: clear FD_CLOEXEC.
+        unsafe { libc::fcntl(b.as_raw_fd(), libc::F_SETFD, 0); }
+        std_cmd.env("KESTREL_IPC_FD", b.as_raw_fd().to_string());
+        std_cmd.env("NODE_CHANNEL_FD", b.as_raw_fd().to_string());
+        parent_fd = a.into_raw_fd();
+        child_end = Some(b);
+    }
+    let mut cmd = tokio::process::Command::from(std_cmd);
     cmd.kill_on_drop(false);
     let mut child = cmd.spawn().map_err(|e| {
         let code = match e.kind() {
@@ -106,6 +123,8 @@ pub fn op_cp_spawn(state: &mut OpState, #[serde] o: SpawnOpts) -> Result<(u32, u
         JsErrorBox::new("Error", format!("{code}: spawn {} {}", o.cmd, e))
     })?;
     let pid = child.id().unwrap_or(0);
+    #[cfg(unix)]
+    drop(child_end);
     let stdin = child.stdin.take();
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -113,7 +132,7 @@ pub fn op_cp_spawn(state: &mut OpState, #[serde] o: SpawnOpts) -> Result<(u32, u
     let rid = ch.next;
     ch.next += 1;
     ch.map.insert(rid, Rc::new(RefCell::new(Child { child, stdin, stdout, stderr })));
-    Ok((rid, pid))
+    Ok((rid, pid, parent_fd))
 }
 
 fn child_of(state: &Rc<RefCell<OpState>>, rid: u32) -> Result<Rc<RefCell<Child>>, JsErrorBox> {

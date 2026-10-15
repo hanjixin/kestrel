@@ -30,14 +30,15 @@ Verified by `test/compat` (each file runs under node and kestrel and the outputs
 
 - `builtins.cjs`: path, fs, util.inspect/format, events, Buffer, crypto (hashes, HMAC, PBKDF2, scrypt, HKDF, AES-GCM/CBC/CTR), zlib (gzip, deflate, brotli), URL/URLSearchParams, querystring, string_decoder, streams + pipeline, os, process, assert. Output is identical to Node 22.
 - `proc.mjs`: child_process `spawn`/`exec`/`execFile`/`execSync`/`execFileSync`/`spawnSync` with piped stdio, exit codes, ENOENT; fd-level fs (`openSync`/`readSync`/`writeSync`/`fstatSync`/`ftruncateSync`, `fs.promises.open` FileHandle). Identical to Node.
-- `net.mjs`: `net.createServer` + `net.connect` echo, addresses, ECONNREFUSED. Identical.
+- `net.mjs`, `unix.mjs`: `net.createServer` + `net.connect` echo over TCP and Unix domain sockets, `tls.createServer` + `tls.connect`, `fs.watch` events, ECONNREFUSED. Identical.
+- `fork.mjs`: `child_process.fork` with the IPC channel (`process.send` / `'message'` both ways, exit codes). Identical.
 - `worker.mjs`: `worker_threads.Worker` with `workerData`, `postMessage` both ways, `process.exit` code in the worker. Identical.
 - `https.mjs`: `https.createServer` with a self-signed key/cert served by rustls, consumed by `fetch`. Identical.
 - `http.mjs`, `serve.ts`: `http.createServer` request/response with bodies and headers, `http.get`, `fetch`, `Kestrel.serve` with JSON, byte bodies, custom headers, sync and async handlers.
 - `esm.mjs`, `npm.mjs`, `realworld.cjs`: ESM ↔ CommonJS interop (both directions, including `require(esm)`), and unmodified packages from a real `node_modules`: marked, nanoid, jszip, pako, hash.js, is-url, inherits, docx, pptxgenjs, pdf-lib, pngjs, jpeg-js, image-size.
 - Scheduling order of `process.nextTick`, microtasks, `setImmediate` and timers matches Node.
 
-Builtins: assert, buffer, child_process, crypto, dns, events, fs (+promises, fd API, streams), http, https, module, net, os, path, process, querystring, readline, stream, string_decoder, timers, tls (client), tty, url, util, worker_threads, zlib. Known gaps: native addons (`.node`/N-API) are not supported; `crypto.createSign`/`createVerify` and asymmetric keys, `fs.watch`, Unix-domain sockets, `tls.createServer` (use `https`), and IPC for `child_process.fork` are not implemented yet and throw a clear `ERR_METHOD_NOT_IMPLEMENTED`.
+Builtins: assert, buffer, child_process (incl. `fork` IPC), crypto (hashes, HMAC, KDFs, AES/ChaCha ciphers, RSA/ECDSA sign/verify and key pairs, webcrypto subset), dns, events, fs (+promises, fd API, streams, `watch`/`watchFile`), http, https, module, net (TCP + Unix sockets), os, path, process, querystring, readline, stream, string_decoder, timers, tls (client and server), tty, url, util, worker_threads, zlib (+brotli). Not supported by design: native addons (`.node`/N-API). Still missing and throwing `ERR_METHOD_NOT_IMPLEMENTED`: `fs.cp` edge cases on special files, `inspector`, `v8`/`vm` modules, `perf_hooks` beyond `performance`, `http2`, `dgram` (UDP), `cluster` (use worker threads or `Kestrel.serve({ workers })`).
 
 ## Measurements
 

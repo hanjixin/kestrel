@@ -142,9 +142,56 @@ export function ftruncateSync(fd, len = 0) { wrap(() => ops.op_fd_truncate(fd | 
 export function readvSync(fd, buffers, position) { let n = 0; for (const b of buffers) { const r = readSync(fd, b, 0, b.byteLength, position === undefined ? null : position + n); n += r; if (r < b.byteLength) break; } return n; }
 export function writevSync(fd, buffers, position) { let n = 0; for (const b of buffers) n += writeSync(fd, b, 0, b.byteLength, position === undefined ? null : position + n); return n; }
 export function opendirSync(path) { const entries = readdirSync(path, { withFileTypes: true }); let i = 0; return { path: toPathString(path), readSync: () => entries[i++] ?? null, read: (cb) => { const e = entries[i++] ?? null; if (cb) queueMicrotask(() => cb(null, e)); return Promise.resolve(e); }, closeSync() {}, close: (cb) => { if (cb) cb(null); return Promise.resolve(); }, async *[Symbol.asyncIterator]() { for (const e of entries) yield e; } }; }
-export function watch() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.watch is not implemented yet"); }
-export function watchFile() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.watchFile is not implemented yet"); }
-export function unwatchFile() {}
+export class FSWatcher extends EventEmitter {
+  constructor(path, opts = {}) {
+    super();
+    let p = toPathString(path);
+    this._rid = wrap(() => ops.op_fs_watch(p, !!opts.recursive), path);
+    try { p = ops.op_k_fs_realpath(p); } catch {}
+    this._base = p;
+    (async () => {
+      for (;;) {
+        const ev = await ops.op_fs_watch_next(this._rid);
+        if (ev === null || this._rid === null) break;
+        let rel = ev[1];
+        if (rel.startsWith(p + "/")) rel = rel.slice(p.length + 1); else if (rel === p) rel = p.slice(p.lastIndexOf("/") + 1);
+        this.emit("change", ev[0], opts.encoding === "buffer" ? Buffer.from(rel) : rel);
+      }
+    })();
+  }
+  close() { if (this._rid !== null) { ops.op_fs_unwatch(this._rid); this._rid = null; queueMicrotask(() => this.emit("close")); } }
+  ref() { return this; } unref() { return this; }
+  [Symbol.asyncDispose]() { this.close(); return Promise.resolve(); }
+}
+export function watch(path, opts, listener) {
+  if (typeof opts === "function") { listener = opts; opts = {}; }
+  if (typeof opts === "string") opts = { encoding: opts };
+  const w = new FSWatcher(path, opts || {});
+  if (listener) w.on("change", listener);
+  return w;
+}
+const watched = new Map();
+export function watchFile(path, opts, listener) {
+  if (typeof opts === "function") { listener = opts; opts = {}; }
+  const p = toPathString(path);
+  const interval = (opts && opts.interval) || 5007;
+  let entry = watched.get(p);
+  if (!entry) {
+    const statOf = () => { try { return statSync(p); } catch { return new Stats({ dev: 0, mode: 0, nlink: 0, uid: 0, gid: 0, ino: 0, size: 0, mtime_ms: 0, atime_ms: 0, ctime_ms: 0, birthtime_ms: 0, is_file: false, is_dir: false, is_symlink: false }); } };
+    entry = { listeners: new Set(), prev: statOf(), timer: null };
+    entry.timer = setInterval(() => { const cur = statOf(); if (cur.mtimeMs !== entry.prev.mtimeMs || cur.size !== entry.prev.size || cur.ino !== entry.prev.ino) { const prev = entry.prev; entry.prev = cur; for (const l of entry.listeners) l(cur, prev); } }, interval);
+    if (opts && opts.persistent === false && entry.timer.unref) entry.timer.unref();
+    watched.set(p, entry);
+  }
+  entry.listeners.add(listener);
+  return { ref() { return this; }, unref() { return this; } };
+}
+export function unwatchFile(path, listener) {
+  const p = toPathString(path); const entry = watched.get(p);
+  if (!entry) return;
+  if (listener) entry.listeners.delete(listener); else entry.listeners.clear();
+  if (entry.listeners.size === 0) { clearInterval(entry.timer); watched.delete(p); }
+}
 export function globSync() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.glob is not implemented yet"); }
 
 // ---------- callback forms ----------
@@ -240,7 +287,6 @@ export function createWriteStream(path, opts = {}) {
 }
 export class ReadStream extends Readable {}
 export class WriteStream extends Writable {}
-export class FSWatcher extends EventEmitter {}
 
 import * as promises from "ext:kestrel/node/fs_promises.js";
 export { promises };

@@ -21,9 +21,29 @@ export function connect(...args) {
   return s;
 }
 export const createSecureContext = (o) => ({ context: o });
-export function createServer() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "tls.createServer is not supported; use https.createServer or Kestrel.serve({ tls })"); }
+import { Server as NetServer } from "ext:kestrel/node/net.js";
+export class Server extends NetServer {
+  constructor(options = {}, listener) {
+    if (typeof options === "function") { listener = options; options = {}; }
+    super(options);
+    const pem = (v) => (v == null ? "" : typeof v === "string" ? v : new TextDecoder().decode(v));
+    ops.op_tls_server_config(pem(options.cert), pem(options.key));
+    if (listener) this.on("secureConnection", listener);
+    this._wrapConnection = async (rid) => {
+      try { await ops.op_tls_accept(rid); } catch (e) { ops.op_net_close(rid); this.emit("tlsClientError", e); return null; }
+      const sock = new TLSSocket(null, options);
+      sock._attach(rid, false);
+      sock.authorized = true;
+      queueMicrotask(() => this.emit("secureConnection", sock));
+      return sock;
+    };
+  }
+  setSecureContext(o) { const pem = (v) => (v == null ? "" : typeof v === "string" ? v : new TextDecoder().decode(v)); ops.op_tls_server_config(pem(o.cert), pem(o.key)); }
+  addContext() {}
+}
+export function createServer(options, listener) { return new Server(options, listener); }
 export const DEFAULT_MIN_VERSION = "TLSv1.2";
 export const DEFAULT_MAX_VERSION = "TLSv1.3";
 export const rootCertificates = [];
 export const checkServerIdentity = () => undefined;
-export default { TLSSocket, connect, createSecureContext, createServer, DEFAULT_MIN_VERSION, DEFAULT_MAX_VERSION, rootCertificates, checkServerIdentity };
+export default { TLSSocket, Server, connect, createSecureContext, createServer, DEFAULT_MIN_VERSION, DEFAULT_MAX_VERSION, rootCertificates, checkServerIdentity };

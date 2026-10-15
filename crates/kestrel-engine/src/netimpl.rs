@@ -29,19 +29,40 @@ fn net_err(e: std::io::Error, syscall: &str) -> JsErrorBox {
     JsErrorBox::new("Error", format!("{}: {} ({syscall})", io_code(&e), e))
 }
 
-// ---------- TCP ----------
+// ---------- stream sockets (TCP, Unix, TLS-upgraded) ----------
+
+type BoxRead = Box<dyn tokio::io::AsyncRead + Unpin + Send>;
+type BoxWrite = Box<dyn tokio::io::AsyncWrite + Unpin + Send>;
 
 struct Conn {
-    rd: Option<OwnedReadHalf>,
-    wr: Option<OwnedWriteHalf>,
-    local: std::net::SocketAddr,
-    peer: std::net::SocketAddr,
+    /// Unsplit stream, kept until the first read/write so `op_tls_accept` can upgrade it.
+    whole: Option<tokio::net::TcpStream>,
+    rd: Option<BoxRead>,
+    wr: Option<BoxWrite>,
+    local: String,
+    local_port: u16,
+    peer: String,
+    peer_port: u16,
+}
+impl Conn {
+    fn ensure_split(&mut self) {
+        if let Some(s) = self.whole.take() {
+            let (rd, wr) = s.into_split();
+            self.rd = Some(Box::new(rd));
+            self.wr = Some(Box::new(wr));
+        }
+    }
+}
+enum Listener {
+    Tcp(tokio::net::TcpListener),
+    #[cfg(unix)]
+    Unix(tokio::net::UnixListener, String),
 }
 #[derive(Default)]
 struct Net {
     next: u32,
     conns: HashMap<u32, Rc<RefCell<Conn>>>,
-    listeners: HashMap<u32, Rc<tokio::net::TcpListener>>,
+    listeners: HashMap<u32, Rc<Listener>>,
 }
 fn net(state: &mut OpState) -> &mut Net {
     if state.try_borrow::<Net>().is_none() {
@@ -49,17 +70,28 @@ fn net(state: &mut OpState) -> &mut Net {
     }
     state.borrow_mut::<Net>()
 }
-fn add_conn(state: &Rc<RefCell<OpState>>, s: tokio::net::TcpStream) -> u32 {
-    let local = s.local_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
-    let peer = s.peer_addr().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap());
-    let _ = s.set_nodelay(true);
-    let (rd, wr) = s.into_split();
+fn insert_conn(state: &Rc<RefCell<OpState>>, c: Conn) -> u32 {
     let mut st = state.borrow_mut();
     let n = net(&mut st);
     let rid = n.next;
     n.next += 1;
-    n.conns.insert(rid, Rc::new(RefCell::new(Conn { rd: Some(rd), wr: Some(wr), local, peer })));
+    n.conns.insert(rid, Rc::new(RefCell::new(c)));
     rid
+}
+fn add_tcp(state: &Rc<RefCell<OpState>>, s: tokio::net::TcpStream) -> u32 {
+    let local = s.local_addr().ok();
+    let peer = s.peer_addr().ok();
+    let _ = s.set_nodelay(true);
+    insert_conn(state, Conn {
+        whole: Some(s), rd: None, wr: None,
+        local: local.map(|a| a.ip().to_string()).unwrap_or_default(), local_port: local.map(|a| a.port()).unwrap_or(0),
+        peer: peer.map(|a| a.ip().to_string()).unwrap_or_default(), peer_port: peer.map(|a| a.port()).unwrap_or(0),
+    })
+}
+#[cfg(unix)]
+fn add_unix(state: &Rc<RefCell<OpState>>, s: tokio::net::UnixStream, path: &str) -> u32 {
+    let (rd, wr) = s.into_split();
+    insert_conn(state, Conn { whole: None, rd: Some(Box::new(rd)), wr: Some(Box::new(wr)), local: path.to_string(), local_port: 0, peer: path.to_string(), peer_port: 0 })
 }
 fn conn_of(state: &Rc<RefCell<OpState>>, rid: u32) -> Result<Rc<RefCell<Conn>>, JsErrorBox> {
     let mut st = state.borrow_mut();
@@ -69,7 +101,44 @@ fn conn_of(state: &Rc<RefCell<OpState>>, rid: u32) -> Result<Rc<RefCell<Conn>>, 
 #[op2]
 pub async fn op_net_connect(state: Rc<RefCell<OpState>>, #[string] host: String, port: u16) -> Result<u32, JsErrorBox> {
     let s = tokio::net::TcpStream::connect((host.as_str(), port)).await.map_err(|e| net_err(e, "connect"))?;
-    Ok(add_conn(&state, s))
+    Ok(add_tcp(&state, s))
+}
+
+#[op2]
+pub async fn op_net_connect_unix(state: Rc<RefCell<OpState>>, #[string] path: String) -> Result<u32, JsErrorBox> {
+    #[cfg(unix)]
+    {
+        let s = tokio::net::UnixStream::connect(&path).await.map_err(|e| net_err(e, "connect"))?;
+        Ok(add_unix(&state, s, &path))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (state, path);
+        Err(JsErrorBox::type_error("unix sockets unsupported"))
+    }
+}
+
+/// Wrap an inherited unix-socket fd (the fork IPC channel) as a connection.
+#[op2(fast)]
+pub fn op_net_from_fd(state: &mut OpState, fd: i32) -> Result<u32, JsErrorBox> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::io::FromRawFd;
+        let std_s = unsafe { std::os::unix::net::UnixStream::from_raw_fd(fd) };
+        std_s.set_nonblocking(true).map_err(|e| net_err(e, "ipc"))?;
+        let s = tokio::net::UnixStream::from_std(std_s).map_err(|e| net_err(e, "ipc"))?;
+        let (rd, wr) = s.into_split();
+        let n = net(state);
+        let rid = n.next;
+        n.next += 1;
+        n.conns.insert(rid, Rc::new(RefCell::new(Conn { whole: None, rd: Some(Box::new(rd)), wr: Some(Box::new(wr)), local: "ipc".into(), local_port: 0, peer: "ipc".into(), peer_port: 0 })));
+        Ok(rid)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (state, fd);
+        Err(JsErrorBox::type_error("ipc unsupported"))
+    }
 }
 
 /// Read up to 64 KiB. Empty = EOF.
@@ -77,7 +146,7 @@ pub async fn op_net_connect(state: Rc<RefCell<OpState>>, #[string] host: String,
 #[buffer]
 pub async fn op_net_read(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Vec<u8>, JsErrorBox> {
     let c = conn_of(&state, rid)?;
-    let rd = c.borrow_mut().rd.take();
+    let rd = { let mut cc = c.borrow_mut(); cc.ensure_split(); cc.rd.take() };
     let Some(mut rd) = rd else { return Ok(Vec::new()) };
     let mut buf = vec![0u8; 65536];
     let r = rd.read(&mut buf).await;
@@ -90,7 +159,7 @@ pub async fn op_net_read(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Vec<u8
 #[op2]
 pub async fn op_net_write(state: Rc<RefCell<OpState>>, rid: u32, #[buffer(copy)] data: Vec<u8>) -> Result<(), JsErrorBox> {
     let c = conn_of(&state, rid)?;
-    let wr = c.borrow_mut().wr.take();
+    let wr = { let mut cc = c.borrow_mut(); cc.ensure_split(); cc.wr.take() };
     let Some(mut wr) = wr else { return Err(JsErrorBox::new("Error", "EPIPE: This socket has been ended by the other party")) };
     let r = wr.write_all(&data).await;
     c.borrow_mut().wr = Some(wr);
@@ -100,7 +169,7 @@ pub async fn op_net_write(state: Rc<RefCell<OpState>>, rid: u32, #[buffer(copy)]
 #[op2]
 pub async fn op_net_shutdown(state: Rc<RefCell<OpState>>, rid: u32) -> Result<(), JsErrorBox> {
     let c = conn_of(&state, rid)?;
-    let wr = c.borrow_mut().wr.take();
+    let wr = { let mut cc = c.borrow_mut(); cc.ensure_split(); cc.wr.take() };
     if let Some(mut wr) = wr {
         let _ = wr.shutdown().await;
     }
@@ -118,7 +187,7 @@ pub fn op_net_close(state: &mut OpState, rid: u32) {
 pub fn op_net_addr(state: &mut OpState, rid: u32) -> Option<(String, u16, String, u16)> {
     net(state).conns.get(&rid).map(|c| {
         let c = c.borrow();
-        (c.local.ip().to_string(), c.local.port(), c.peer.ip().to_string(), c.peer.port())
+        (c.local.clone(), c.local_port, c.peer.clone(), c.peer_port)
     })
 }
 
@@ -138,14 +207,39 @@ pub fn op_net_listen(state: &mut OpState, #[string] host: &str, port: u16) -> Re
     let n = net(state);
     let rid = n.next;
     n.next += 1;
-    n.listeners.insert(rid, Rc::new(l));
+    n.listeners.insert(rid, Rc::new(Listener::Tcp(l)));
     Ok(rid)
+}
+
+#[op2(fast)]
+pub fn op_net_listen_unix(state: &mut OpState, #[string] path: &str) -> Result<u32, JsErrorBox> {
+    #[cfg(unix)]
+    {
+        if std::path::Path::new(path).exists() {
+            let _ = std::fs::remove_file(path);
+        }
+        let l = tokio::net::UnixListener::bind(path).map_err(|e| net_err(e, "listen"))?;
+        let n = net(state);
+        let rid = n.next;
+        n.next += 1;
+        n.listeners.insert(rid, Rc::new(Listener::Unix(l, path.to_string())));
+        Ok(rid)
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (state, path);
+        Err(JsErrorBox::type_error("unix sockets unsupported"))
+    }
 }
 
 #[op2]
 #[serde]
 pub fn op_net_listen_addr(state: &mut OpState, rid: u32) -> Option<(String, u16)> {
-    net(state).listeners.get(&rid).and_then(|l| l.local_addr().ok()).map(|a| (a.ip().to_string(), a.port()))
+    net(state).listeners.get(&rid).and_then(|l| match &**l {
+        Listener::Tcp(t) => t.local_addr().ok().map(|a| (a.ip().to_string(), a.port())),
+        #[cfg(unix)]
+        Listener::Unix(_, p) => Some((p.clone(), 0)),
+    })
 }
 
 /// Resolves with the new connection's rid, or u32::MAX when the listener was closed.
@@ -156,13 +250,42 @@ pub async fn op_net_accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<u32,
         net(&mut st).listeners.get(&rid).cloned()
     };
     let Some(l) = l else { return Ok(u32::MAX) };
-    let (s, _) = l.accept().await.map_err(|e| net_err(e, "accept"))?;
-    Ok(add_conn(&state, s))
+    match &*l {
+        Listener::Tcp(t) => {
+            let (s, _) = t.accept().await.map_err(|e| net_err(e, "accept"))?;
+            Ok(add_tcp(&state, s))
+        }
+        #[cfg(unix)]
+        Listener::Unix(u, p) => {
+            let (s, _) = u.accept().await.map_err(|e| net_err(e, "accept"))?;
+            Ok(add_unix(&state, s, p))
+        }
+    }
 }
 
 #[op2(fast)]
 pub fn op_net_close_listener(state: &mut OpState, rid: u32) {
-    net(state).listeners.remove(&rid);
+    if let Some(l) = net(state).listeners.remove(&rid) {
+        #[cfg(unix)]
+        if let Listener::Unix(_, p) = &*l {
+            let _ = std::fs::remove_file(p);
+        }
+        let _ = l;
+    }
+}
+
+/// Server-side TLS upgrade of an accepted TCP connection (uses the thread's acceptor config).
+#[op2]
+pub async fn op_tls_accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<(), JsErrorBox> {
+    let acceptor = TLS_ACCEPTOR.with(|t| t.borrow().clone()).ok_or_else(|| JsErrorBox::type_error("no TLS server config on this thread"))?;
+    let c = conn_of(&state, rid)?;
+    let whole = c.borrow_mut().whole.take().ok_or_else(|| JsErrorBox::type_error("socket already in use"))?;
+    let tls = acceptor.accept(whole).await.map_err(|e| net_err(e, "tls handshake"))?;
+    let (rd, wr) = tokio::io::split(tls);
+    let mut cc = c.borrow_mut();
+    cc.rd = Some(Box::new(rd));
+    cc.wr = Some(Box::new(wr));
+    Ok(())
 }
 
 // ---------- TLS (server side, used by the HTTP backend) ----------

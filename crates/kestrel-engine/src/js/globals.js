@@ -315,8 +315,37 @@ process.env = new Proxy({}, {
   deleteProperty: (t, k) => { delete t[k]; return true; },
   has: (t, k) => k in t, ownKeys: (t) => Reflect.ownKeys(t), getOwnPropertyDescriptor: (t, k) => Reflect.getOwnPropertyDescriptor(t, k),
 });
+// IPC channel inherited from child_process.fork (KESTREL_IPC_FD).
+function setupIpcChild(fd) {
+  let rid = null, started = false;
+  const open = () => { if (rid === null) { rid = ops.op_net_from_fd(fd); process.connected = true; process.channel = {}; } return rid; };
+  const pump = () => {
+    if (started) return; started = true; open();
+    (async () => {
+      let buf = "";
+      try {
+        for (;;) { const chunk = await ops.op_net_read(rid); if (chunk.length === 0) break; buf += utf8Decode(chunk); let i; while ((i = buf.indexOf("\n")) !== -1) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line) process.emit("message", JSON.parse(line)); } }
+      } catch {}
+      if (process.connected) { process.connected = false; process.emit("disconnect"); }
+    })();
+  };
+  process.send = (message, sendHandle, options, callback) => {
+    if (typeof sendHandle === "function") callback = sendHandle; else if (typeof options === "function") callback = options;
+    open();
+    if (!process.connected) { const e = nodeError("ERR_IPC_CHANNEL_CLOSED", "Channel closed"); if (callback) { queueMicrotask(() => callback(e)); return false; } throw e; }
+    ops.op_net_write(rid, utf8Encode(JSON.stringify(message) + "\n")).then(() => callback && callback(null), (e) => { if (callback) callback(e); else process.emit("error", e); });
+    return true;
+  };
+  process.disconnect = () => { if (!process.connected) return; process.connected = false; if (rid !== null) ops.op_net_shutdown(rid).then(() => {}, () => {}); process.emit("disconnect"); };
+  process.connected = true;
+  const origOn = process.on;
+  process.on = function (ev, fn) { const r = origOn.call(process, ev, fn); if (ev === "message") pump(); return r; };
+  process.addListener = process.on;
+  process.once = function (ev, fn) { const w = (...a) => { process.off(ev, w); fn(...a); }; w.listener = fn; return process.on(ev, w); };
+}
 globalThis.__kestrel_init = (argv, env, platform, pid) => {
   startMs = ops.op_k_now_ms();
+  if (env.KESTREL_IPC_FD) { setupIpcChild(Number(env.KESTREL_IPC_FD)); }
   timeOrigin = Date.now() - startMs;
   process.argv = [argv[0] === "kestrel" ? getOs().exec_path || "kestrel" : argv[0], ...argv.slice(1)];
   process.argv0 = "kestrel";

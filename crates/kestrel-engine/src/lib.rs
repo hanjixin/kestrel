@@ -13,5 +13,6 @@ pub mod bridge {
 pub mod ops;
 pub mod runtime;
 pub mod transpile;
+pub mod watchimpl;
 
 pub use runtime::{run_file, Runtime};

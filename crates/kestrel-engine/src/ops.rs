@@ -174,6 +174,8 @@ deno_core::extension!(
         super::netimpl::op_worker_info, super::netimpl::op_worker_spawn, super::netimpl::op_worker_post, super::netimpl::op_worker_recv,
         super::netimpl::op_worker_exit_code, super::netimpl::op_worker_terminate, super::netimpl::op_worker_parent_post,
         super::netimpl::op_worker_parent_recv, super::netimpl::op_worker_self_exit, super::netimpl::op_dns_lookup,
+        super::netimpl::op_net_connect_unix, super::netimpl::op_net_from_fd, super::netimpl::op_net_listen_unix, super::netimpl::op_tls_accept,
+        super::watchimpl::op_fs_watch, super::watchimpl::op_fs_watch_next, super::watchimpl::op_fs_unwatch,
         op_kestrel_call0, op_kestrel_call1, op_kestrel_call2, op_kestrel_call3,
         op_kestrel_call4, op_kestrel_call5, op_kestrel_call6,
     ],
