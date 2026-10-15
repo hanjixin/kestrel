@@ -1,0 +1,22 @@
+[package]
+name = "kestrel-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[build-dependencies]
+deno_core.workspace = true
+deno_error = "0.7"
+
+[dependencies]
+serde_json = "1"
+deno_core.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+deno_error = "0.7"
+oxc_allocator.workspace = true
+oxc_parser.workspace = true
+oxc_span.workspace = true
+oxc_semantic.workspace = true
+oxc_transformer.workspace = true
+oxc_codegen.workspace = true

@@ -1,0 +1,39 @@
+[workspace]
+resolver = "2"
+members = ["crates/kestrel-cli", "crates/kestrel-engine", "crates/kestrel-aot"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+deno_core = "0.412.0"
+tokio = { version = "1", features = ["rt", "macros", "net", "time", "sync", "io-util"] }
+anyhow = "1"
+oxc_allocator = "0.154.0"
+oxc_parser = "0.154.0"
+oxc_ast = "0.154.0"
+oxc_span = "0.154.0"
+oxc_semantic = "0.154.0"
+oxc_transformer = "0.154.0"
+oxc_codegen = "0.154.0"
+cranelift = "0.137.0-rc.1"
+cranelift-jit = "0.137.0-rc.1"
+cranelift-module = "0.137.0-rc.1"
+cranelift-native = "0.137.0-rc.1"
+cranelift-codegen = "0.137.0-rc.1"
+cranelift-frontend = "0.137.0-rc.1"
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+socket2 = { version = "0.5", features = ["all"] }
+mimalloc = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = false

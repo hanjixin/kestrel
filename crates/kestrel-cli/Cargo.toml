@@ -1,0 +1,16 @@
+[package]
+name = "kestrel-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "kestrel"
+path = "src/main.rs"
+
+[dependencies]
+kestrel-engine = { path = "../kestrel-engine" }
+kestrel-aot = { path = "../kestrel-aot" }
+anyhow.workspace = true
+tokio.workspace = true
+mimalloc.workspace = true
