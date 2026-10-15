@@ -17,6 +17,7 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new() -> Self {
+        kestrel_aot::registry::init_thread();
         let js = JsRuntime::new(RuntimeOptions {
             module_loader: Some(Rc::new(KestrelModuleLoader)),
             extensions: vec![ops::kestrel::init()],
@@ -70,6 +71,7 @@ impl Default for Runtime {
 
 /// Convenience: run a file to completion on a fresh current-thread Tokio runtime.
 pub fn run_file(path: &Path, argv: &[String]) -> Result<i32> {
+    let _ = crate::httpimpl::MAIN.set((path.to_path_buf(), argv.to_vec()));
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;

@@ -1,3 +1,4 @@
+pub mod httpimpl;
 pub mod loader;
 /// Native dispatch table shared with the AOT tier.
 pub mod bridge {

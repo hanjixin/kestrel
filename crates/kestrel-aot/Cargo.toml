@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+libc = "0.2"
 oxc_allocator.workspace = true
 oxc_parser.workspace = true
 oxc_ast.workspace = true

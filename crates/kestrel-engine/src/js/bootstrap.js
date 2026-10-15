@@ -165,3 +165,108 @@ core.setUnhandledPromiseRejectionHandler((_promise, reason) => {
   globalThis.process.exitCode = 1;
   return true;
 });
+
+// ---------- Fetch-style Request / Response / Headers (minimal) ----------
+class Headers {
+  #m = new Map();
+  constructor(init) {
+    if (init instanceof Headers) { for (const [k, v] of init) this.#m.set(k, v); }
+    else if (Array.isArray(init)) { for (const [k, v] of init) this.append(k, v); }
+    else if (init && typeof init === "object") { for (const k of Object.keys(init)) this.set(k, init[k]); }
+  }
+  get(k) { const v = this.#m.get(String(k).toLowerCase()); return v === undefined ? null : v; }
+  has(k) { return this.#m.has(String(k).toLowerCase()); }
+  set(k, v) { this.#m.set(String(k).toLowerCase(), String(v)); }
+  append(k, v) { k = String(k).toLowerCase(); const cur = this.#m.get(k); this.#m.set(k, cur === undefined ? String(v) : cur + ", " + v); }
+  delete(k) { this.#m.delete(String(k).toLowerCase()); }
+  forEach(cb, thisArg) { for (const [k, v] of this.#m) cb.call(thisArg, v, k, this); }
+  *entries() { yield* this.#m.entries(); }
+  *keys() { yield* this.#m.keys(); }
+  *values() { yield* this.#m.values(); }
+  [Symbol.iterator]() { return this.#m.entries(); }
+}
+globalThis.Headers = Headers;
+
+const kReqId = Symbol("kestrel.reqId");
+class Request {
+  #headers = null;
+  constructor(url, init = {}, id) {
+    this.url = url;
+    this.method = init.method ? String(init.method).toUpperCase() : "GET";
+    this[kReqId] = id;
+    if (init.headers) this.#headers = new Headers(init.headers);
+    this.body = init.body ?? null;
+  }
+  get headers() {
+    if (this.#headers === null) {
+      this.#headers = new Headers();
+      if (this[kReqId] !== undefined) {
+        const raw = core.ops.op_kestrel_http_headers(this[kReqId]);
+        if (raw.length) { const parts = raw.split("\0"); for (let i = 0; i + 1 < parts.length; i += 2) this.#headers.append(parts[i], parts[i + 1]); }
+      }
+    }
+    return this.#headers;
+  }
+  async text() { return this.body == null ? "" : String(this.body); }
+  async json() { return JSON.parse(await this.text()); }
+}
+globalThis.Request = Request;
+
+const kBody = Symbol("kestrel.body");
+class Response {
+  constructor(body = null, init = {}) {
+    this.status = init.status ?? 200;
+    this.statusText = init.statusText ?? "";
+    this.headers = new Headers(init.headers);
+    this[kBody] = body == null ? "" : typeof body === "string" ? body : body instanceof Uint8Array ? new TextDecoder().decode(body) : String(body);
+    this.ok = this.status >= 200 && this.status < 300;
+  }
+  static json(data, init = {}) {
+    const r = new Response(JSON.stringify(data), init);
+    if (!r.headers.has("content-type")) r.headers.set("content-type", "application/json");
+    return r;
+  }
+  static redirect(url, status = 302) { return new Response(null, { status, headers: { location: url } }); }
+  async text() { return this[kBody]; }
+  async json() { return JSON.parse(this[kBody]); }
+}
+globalThis.Response = Response;
+
+// ---------- Kestrel namespace ----------
+function serve(options) {
+  const workerId = core.ops.op_kestrel_worker_id();
+  const handler = typeof options === "function" ? options : options.fetch;
+  if (typeof handler !== "function") throw new TypeError("Kestrel.serve: fetch handler required");
+  const port = options.port ?? 3000;
+  const hostname = options.hostname ?? "0.0.0.0";
+  const cpus = core.ops.op_kestrel_cpus();
+  const workers = Math.max(1, Math.min(options.workers === "auto" || options.workers === undefined ? cpus : options.workers | 0, 256));
+  if (workerId === 0 && workers > 1) core.ops.op_kestrel_spawn_workers(workers - 1);
+
+  const rid = core.ops.op_kestrel_http_listen(hostname, port);
+  const accept = core.ops.op_kestrel_http_accept;
+  const respond = core.ops.op_kestrel_http_respond;
+  const errorResp = new Response("Internal Server Error", { status: 500 });
+  const send = (id, r) => {
+    if (!(r instanceof Response)) r = errorResp;
+    respond(id, r.status, r.headers.get("content-type") ?? "text/plain;charset=UTF-8", r[kBody]);
+  };
+  (async () => {
+    for (;;) {
+      const s = await accept(rid);
+      const i1 = s.indexOf("\0");
+      const i2 = s.indexOf("\0", i1 + 1);
+      const id = +s.slice(0, i1);
+      const req = new Request(s.slice(i2 + 1), { method: s.slice(i1 + 1, i2) }, id);
+      let r;
+      try { r = handler(req); } catch (e) { console.error(e); send(id, errorResp); continue; }
+      if (r instanceof Promise) r.then((v) => send(id, v), (e) => { console.error(e); send(id, errorResp); });
+      else send(id, r);
+    }
+  })();
+  if (workerId === 0 && options.silent !== true) {
+    console.log(`Kestrel listening on http://${hostname}:${port} (${workers} worker${workers > 1 ? "s" : ""})`);
+  }
+  return { port, hostname, workers };
+}
+globalThis.Kestrel = Object.freeze({ serve, get workerId() { return core.ops.op_kestrel_worker_id(); }, version: "0.0.1" });

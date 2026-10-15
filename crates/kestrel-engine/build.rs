@@ -3,6 +3,21 @@
 #[path = "src/ops.rs"]
 mod ops;
 
+/// Snapshot-time stubs; real implementations live in src/httpimpl.rs.
+#[allow(dead_code)]
+mod httpimpl {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use deno_core::OpState;
+    use deno_error::JsErrorBox;
+    pub fn listen(_: &mut OpState, _: &str, _: u16) -> Result<u32, JsErrorBox> { unreachable!() }
+    pub async fn accept(_: Rc<RefCell<OpState>>, _: u32) -> Result<String, JsErrorBox> { unreachable!() }
+    pub fn respond(_: &mut OpState, _: u32, _: u16, _: &str, _: &str) -> Result<(), JsErrorBox> { unreachable!() }
+    pub fn headers(_: &mut OpState, _: u32) -> String { unreachable!() }
+    pub fn spawn_workers(_: u32) -> Result<(), JsErrorBox> { unreachable!() }
+    pub fn worker_id() -> u32 { 0 }
+}
+
 /// Stub for snapshot time; the real table lives in kestrel-aot.
 #[allow(dead_code)]
 mod bridge {

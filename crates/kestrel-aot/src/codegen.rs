@@ -99,10 +99,10 @@ impl Backend {
             jb.symbol(*name, *ptr);
         }
         jb.symbol("k_to_int32_slow", k_to_int32_slow as *const u8);
-        jb.symbol("K_DEPTH", std::ptr::addr_of!(crate::registry::K_DEPTH) as *const u8);
+        jb.symbol("K_STACK_LIMIT", std::ptr::addr_of!(crate::registry::K_STACK_LIMIT) as *const u8);
         jb.symbol("K_OVERFLOW", std::ptr::addr_of!(crate::registry::K_OVERFLOW) as *const u8);
         let mut module = JITModule::new(jb);
-        let depth_data = module.declare_data("K_DEPTH", Linkage::Import, true, false)?;
+        let depth_data = module.declare_data("K_STACK_LIMIT", Linkage::Import, true, false)?;
         let overflow_data = module.declare_data("K_OVERFLOW", Linkage::Import, true, false)?;
 
         let mut helpers = HashMap::new();
@@ -302,41 +302,77 @@ impl<'x, 'a, 'b> FnCx<'x, 'a, 'b> {
 
     // ---------- frame accounting (JS-compatible RangeError on deep recursion) ----------
 
-    /// K_DEPTH += 1; if it exceeds the limit, flag overflow and return NaN.
+    /// Stack check: if SP is below K_STACK_LIMIT, flag overflow, pin the limit so
+    /// every frame above us bails too (O(depth) unwind like a JS RangeError), return NaN.
     fn enter_frame(&mut self) {
         let ptr_ty = self.module.target_config().pointer_type();
-        let dp = self.b.ins().symbol_value(ptr_ty, self.depth_gv);
-        let d = self.b.ins().load(types::I32, cranelift_codegen::ir::MemFlagsData::trusted(), dp, 0);
-        let d1 = self.b.ins().iadd_imm_s(d, 1);
-        self.b.ins().store(cranelift_codegen::ir::MemFlagsData::trusted(), d1, dp, 0);
-        let over = self.b.ins().icmp_imm_s(IntCC::UnsignedGreaterThan, d1, crate::registry::DEPTH_LIMIT as i64);
+        let sp = self.b.ins().get_stack_pointer(ptr_ty);
+        let lp = self.b.ins().symbol_value(ptr_ty, self.depth_gv);
+        let lim = self.b.ins().load(ptr_ty, cranelift_codegen::ir::MemFlagsData::trusted(), lp, 0);
+        let ok = self.b.ins().icmp(IntCC::UnsignedGreaterThan, sp, lim);
         let bail_b = self.b.create_block();
         let cont = self.b.create_block();
-        self.b.ins().brif(over, bail_b, &[], cont, &[]);
+        self.b.ins().brif(ok, cont, &[], bail_b, &[]);
         self.b.switch_to_block(bail_b);
         self.b.seal_block(bail_b);
+        self.b.set_cold_block(bail_b);
         let op = self.b.ins().symbol_value(ptr_ty, self.overflow_gv);
         let one = self.b.ins().iconst(types::I32, 1);
         self.b.ins().store(cranelift_codegen::ir::MemFlagsData::trusted(), one, op, 0);
-        // Pin the depth far above the limit so every frame still on the stack (and any
-        // sibling call it makes while unwinding) bails out immediately: O(depth) unwind,
-        // mirroring how a JS RangeError unwinds the whole stack.
-        let pinned = self.b.ins().iconst(types::I32, 0x4000_0000);
-        self.b.ins().store(cranelift_codegen::ir::MemFlagsData::trusted(), pinned, dp, 0);
+        let pinned = self.b.ins().iconst(ptr_ty, -1);
+        self.b.ins().store(cranelift_codegen::ir::MemFlagsData::trusted(), pinned, lp, 0);
         let nan = self.b.ins().f64const(f64::NAN);
         self.b.ins().return_(&[nan]);
         self.b.switch_to_block(cont);
         self.b.seal_block(cont);
     }
 
-    /// K_DEPTH -= 1; return v.
     fn ret(&mut self, v: Value) {
-        let ptr_ty = self.module.target_config().pointer_type();
-        let dp = self.b.ins().symbol_value(ptr_ty, self.depth_gv);
-        let d = self.b.ins().load(types::I32, cranelift_codegen::ir::MemFlagsData::trusted(), dp, 0);
-        let d1 = self.b.ins().iadd_imm_s(d, -1);
-        self.b.ins().store(cranelift_codegen::ir::MemFlagsData::trusted(), d1, dp, 0);
         self.b.ins().return_(&[v]);
+    }
+
+    /// JS `%` on numbers. Fast path: both operands are integers with |x| < 2^53 and the
+    /// divisor is non-zero -> integer remainder with the dividend's sign (incl. -0).
+    /// Otherwise fmod via libm.
+    fn js_rem(&mut self, a: Value, b: Value) -> Value {
+        let fast = self.b.create_block();
+        let slow = self.b.create_block();
+        let merge = self.b.create_block();
+        self.b.append_block_param(merge, types::F64);
+
+        let ai = self.b.ins().fcvt_to_sint_sat(types::I64, a);
+        let bi = self.b.ins().fcvt_to_sint_sat(types::I64, b);
+        let af = self.b.ins().fcvt_from_sint(types::F64, ai);
+        let bf = self.b.ins().fcvt_from_sint(types::F64, bi);
+        let a_int = self.b.ins().fcmp(FloatCC::Equal, af, a);
+        let b_int = self.b.ins().fcmp(FloatCC::Equal, bf, b);
+        let lim = self.b.ins().f64const(9007199254740992.0);
+        let aa = self.b.ins().fabs(a);
+        let ab = self.b.ins().fabs(b);
+        let a_small = self.b.ins().fcmp(FloatCC::LessThan, aa, lim);
+        let b_small = self.b.ins().fcmp(FloatCC::LessThan, ab, lim);
+        let b_nz = self.b.ins().icmp_imm_s(IntCC::NotEqual, bi, 0);
+        let c1 = self.b.ins().band(a_int, b_int);
+        let c2 = self.b.ins().band(a_small, b_small);
+        let c3 = self.b.ins().band(c1, c2);
+        let cond = self.b.ins().band(c3, b_nz);
+        self.b.ins().brif(cond, fast, &[], slow, &[]);
+
+        self.b.switch_to_block(fast);
+        self.b.seal_block(fast);
+        let r = self.b.ins().srem(ai, bi);
+        let rf = self.b.ins().fcvt_from_sint(types::F64, r);
+        let rs = self.b.ins().fcopysign(rf, a);
+        self.b.ins().jump(merge, &[rs.into()]);
+
+        self.b.switch_to_block(slow);
+        self.b.seal_block(slow);
+        let sv = self.call_helper("k_fmod", &[a, b]);
+        self.b.ins().jump(merge, &[sv.into()]);
+
+        self.b.switch_to_block(merge);
+        self.b.seal_block(merge);
+        self.b.block_params(merge)[0]
     }
 
     // ---------- statements ----------
@@ -658,6 +694,17 @@ impl<'x, 'a, 'b> FnCx<'x, 'a, 'b> {
             }
             Expression::BinaryExpression(bin) => {
                 let l = self.expr(&bin.left)?;
+                // x / 2^k == x * 2^-k exactly in IEEE-754 (as long as 2^-k is normal).
+                if bin.operator == BinaryOperator::Division {
+                    if let Expression::NumericLiteral(n) = &bin.right {
+                        let d = n.value;
+                        if d.is_finite() && d != 0.0 && d.abs().log2().fract() == 0.0 && d.abs() <= 1e300 && d.abs() >= 1e-300 {
+                            let a = self.to_num(l);
+                            let inv = self.b.ins().f64const(1.0 / d);
+                            return Ok(TVal { ty: Ty::Num, v: self.b.ins().fmul(a, inv) });
+                        }
+                    }
+                }
                 let r = self.expr(&bin.right)?;
                 self.binary(bin.operator, l, r)
             }
@@ -836,7 +883,7 @@ impl<'x, 'a, 'b> FnCx<'x, 'a, 'b> {
                     B::Subtraction => self.b.ins().fsub(a, b),
                     B::Multiplication => self.b.ins().fmul(a, b),
                     B::Division => self.b.ins().fdiv(a, b),
-                    B::Remainder => self.call_helper("k_fmod", &[a, b]),
+                    B::Remainder => self.js_rem(a, b),
                     _ => self.call_helper("k_pow", &[a, b]),
                 };
                 Ok(TVal { ty: Ty::Num, v })
