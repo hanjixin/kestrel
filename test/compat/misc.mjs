@@ -17,3 +17,11 @@ try { vm.runInThisContext("syntax error here"); } catch (e) { out.push(e.name); 
 const hs = v8.getHeapStatistics();
 out.push(hs.used_heap_size > 0 && hs.heap_size_limit > hs.used_heap_size, typeof performance.now(), typeof PerformanceObserver, cluster.isPrimary, typeof cluster.fork);
 console.log(JSON.stringify(out));
+{
+  const m = dgram.createSocket({ type: "udp4", reuseAddr: true });
+  m.bind(0, "127.0.0.1"); await once(m, "listening");
+  let ok = true; try { m.addMembership("224.0.0.251"); m.setMulticastTTL(2); m.dropMembership("224.0.0.251"); } catch (e) { ok = e.code || e.message; }
+  m.close();
+  const insp = await import("node:inspector");
+  console.log(JSON.stringify([ok, typeof insp.Session, insp.url()]));
+}

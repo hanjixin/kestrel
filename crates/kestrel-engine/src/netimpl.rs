@@ -780,3 +780,32 @@ pub fn op_vm_run_in_new_context<'a>(scope: &mut v8::PinScope<'a, '_>, #[string] 
     };
     Ok(v8::Local::new(scope, result))
 }
+
+/// Multicast membership / options for a bound UDP socket.
+#[op2(fast)]
+pub fn op_udp_multicast(state: &mut OpState, rid: u32, #[string] op: &str, #[string] group: &str, #[string] iface: &str, value: u32) -> Result<(), JsErrorBox> {
+    use std::os::fd::AsRawFd;
+    let s = udp(state).socks.get(&rid).cloned().ok_or_else(|| JsErrorBox::new("Error", "ERR_SOCKET_DGRAM_NOT_RUNNING: Not running"))?;
+    let fd = unsafe { libc::dup(s.as_raw_fd()) };
+    if fd < 0 { return Err(JsErrorBox::generic("dup failed")); }
+    let sock = unsafe { <socket2::Socket as std::os::fd::FromRawFd>::from_raw_fd(fd) };
+    let r = match op {
+        "join" | "leave" => {
+            let g: std::net::IpAddr = group.parse().map_err(|_| JsErrorBox::type_error("bad multicast group"))?;
+            match g {
+                std::net::IpAddr::V4(g4) => {
+                    let i4: std::net::Ipv4Addr = if iface.is_empty() { std::net::Ipv4Addr::UNSPECIFIED } else { iface.parse().map_err(|_| JsErrorBox::type_error("bad interface"))? };
+                    if op == "join" { sock.join_multicast_v4(&g4, &i4) } else { sock.leave_multicast_v4(&g4, &i4) }
+                }
+                std::net::IpAddr::V6(g6) => { if op == "join" { sock.join_multicast_v6(&g6, value) } else { sock.leave_multicast_v6(&g6, value) } }
+            }
+        }
+        "ttl" => sock.set_ttl(value),
+        "mttl" => sock.set_multicast_ttl_v4(value),
+        "loop" => sock.set_multicast_loop_v4(value != 0),
+        "broadcast" => sock.set_broadcast(value != 0),
+        _ => Ok(()),
+    };
+    drop(sock);
+    r.map_err(|e| net_err(e, "setsockopt"))
+}
