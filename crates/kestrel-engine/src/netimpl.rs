@@ -63,6 +63,19 @@ struct Net {
     next: u32,
     conns: HashMap<u32, Rc<RefCell<Conn>>>,
     listeners: HashMap<u32, Rc<Listener>>,
+    /// Per resource id (connections and listeners share the counter): signalled on close,
+    /// so a pending read/accept — which holds its own handle to the socket — returns
+    /// instead of keeping the event loop alive after `close()`/`destroy()`.
+    closed: HashMap<u32, Rc<tokio::sync::Notify>>,
+}
+fn closed_of(state: &Rc<RefCell<OpState>>, rid: u32) -> Option<Rc<tokio::sync::Notify>> {
+    let mut st = state.borrow_mut();
+    net(&mut st).closed.get(&rid).cloned()
+}
+fn signal_closed(n: &mut Net, rid: u32) {
+    if let Some(c) = n.closed.remove(&rid) {
+        c.notify_one();
+    }
 }
 fn net(state: &mut OpState) -> &mut Net {
     if state.try_borrow::<Net>().is_none() {
@@ -76,6 +89,7 @@ fn insert_conn(state: &Rc<RefCell<OpState>>, c: Conn) -> u32 {
     let rid = n.next;
     n.next += 1;
     n.conns.insert(rid, Rc::new(RefCell::new(c)));
+    n.closed.insert(rid, Rc::new(tokio::sync::Notify::new()));
     rid
 }
 fn add_tcp(state: &Rc<RefCell<OpState>>, s: tokio::net::TcpStream) -> u32 {
@@ -132,6 +146,7 @@ pub fn op_net_from_fd(state: &mut OpState, fd: i32) -> Result<u32, JsErrorBox> {
         let rid = n.next;
         n.next += 1;
         n.conns.insert(rid, Rc::new(RefCell::new(Conn { whole: None, rd: Some(Box::new(rd)), wr: Some(Box::new(wr)), local: "ipc".into(), local_port: 0, peer: "ipc".into(), peer_port: 0 })));
+        n.closed.insert(rid, Rc::new(tokio::sync::Notify::new()));
         Ok(rid)
     }
     #[cfg(not(unix))]
@@ -146,10 +161,17 @@ pub fn op_net_from_fd(state: &mut OpState, fd: i32) -> Result<u32, JsErrorBox> {
 #[buffer]
 pub async fn op_net_read(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Vec<u8>, JsErrorBox> {
     let c = conn_of(&state, rid)?;
+    let closed = closed_of(&state, rid);
     let rd = { let mut cc = c.borrow_mut(); cc.ensure_split(); cc.rd.take() };
     let Some(mut rd) = rd else { return Ok(Vec::new()) };
     let mut buf = vec![0u8; 65536];
-    let r = rd.read(&mut buf).await;
+    let r = match closed {
+        Some(closed) => tokio::select! {
+            r = rd.read(&mut buf) => r,
+            _ = closed.notified() => Ok(0),
+        },
+        None => rd.read(&mut buf).await,
+    };
     c.borrow_mut().rd = Some(rd);
     let n = r.map_err(|e| net_err(e, "read"))?;
     buf.truncate(n);
@@ -178,7 +200,9 @@ pub async fn op_net_shutdown(state: Rc<RefCell<OpState>>, rid: u32) -> Result<()
 
 #[op2(fast)]
 pub fn op_net_close(state: &mut OpState, rid: u32) {
-    net(state).conns.remove(&rid);
+    let n = net(state);
+    n.conns.remove(&rid);
+    signal_closed(n, rid);
 }
 
 /// [localAddress, localPort, remoteAddress, remotePort]
@@ -210,6 +234,7 @@ pub fn op_net_listen(state: &mut OpState, #[string] host: &str, port: u16) -> Re
     let rid = n.next;
     n.next += 1;
     n.listeners.insert(rid, Rc::new(Listener::Tcp(l)));
+    n.closed.insert(rid, Rc::new(tokio::sync::Notify::new()));
     Ok(rid)
 }
 
@@ -225,6 +250,7 @@ pub fn op_net_listen_unix(state: &mut OpState, #[string] path: &str) -> Result<u
         let rid = n.next;
         n.next += 1;
         n.listeners.insert(rid, Rc::new(Listener::Unix(l, path.to_string())));
+        n.closed.insert(rid, Rc::new(tokio::sync::Notify::new()));
         Ok(rid)
     }
     #[cfg(not(unix))]
@@ -252,14 +278,22 @@ pub async fn op_net_accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<u32,
         net(&mut st).listeners.get(&rid).cloned()
     };
     let Some(l) = l else { return Ok(u32::MAX) };
+    let closed = closed_of(&state, rid);
+    let closed = async move { match closed { Some(c) => c.notified().await, None => std::future::pending::<()>().await } };
     match &*l {
         Listener::Tcp(t) => {
-            let (s, _) = t.accept().await.map_err(|e| net_err(e, "accept"))?;
+            let s = tokio::select! {
+                r = t.accept() => r.map_err(|e| net_err(e, "accept"))?.0,
+                _ = closed => return Ok(u32::MAX),
+            };
             Ok(add_tcp(&state, s))
         }
         #[cfg(unix)]
         Listener::Unix(u, p) => {
-            let (s, _) = u.accept().await.map_err(|e| net_err(e, "accept"))?;
+            let s = tokio::select! {
+                r = u.accept() => r.map_err(|e| net_err(e, "accept"))?.0,
+                _ = closed => return Ok(u32::MAX),
+            };
             Ok(add_unix(&state, s, p))
         }
     }
@@ -267,6 +301,7 @@ pub async fn op_net_accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<u32,
 
 #[op2(fast)]
 pub fn op_net_close_listener(state: &mut OpState, rid: u32) {
+    signal_closed(net(state), rid);
     if let Some(l) = net(state).listeners.remove(&rid) {
         #[cfg(unix)]
         if let Listener::Unix(_, p) = &*l {
@@ -343,6 +378,7 @@ pub async fn op_tls_connect(state: Rc<RefCell<OpState>>, #[string] host: String,
     let rid = n.next;
     n.next += 1;
     TLS_CONNS.with(|c| c.borrow_mut().insert(rid, Rc::new(RefCell::new(TlsConn { rd: Some(rd), wr: Some(wr) }))));
+    TLS_CLOSED.with(|m| m.borrow_mut().insert(rid, Rc::new(tokio::sync::Notify::new())));
     Ok(rid)
 }
 
@@ -353,6 +389,7 @@ struct TlsConn {
 }
 thread_local! {
     static TLS_CONNS: RefCell<HashMap<u32, Rc<RefCell<TlsConn>>>> = RefCell::new(HashMap::new());
+    static TLS_CLOSED: RefCell<HashMap<u32, Rc<tokio::sync::Notify>>> = RefCell::new(HashMap::new());
 }
 fn tls_conn(rid: u32) -> Result<Rc<RefCell<TlsConn>>, JsErrorBox> {
     TLS_CONNS.with(|c| c.borrow().get(&rid).cloned()).ok_or_else(|| JsErrorBox::new("Error", "ERR_SOCKET_CLOSED: socket is closed"))
@@ -362,10 +399,17 @@ fn tls_conn(rid: u32) -> Result<Rc<RefCell<TlsConn>>, JsErrorBox> {
 #[buffer]
 pub async fn op_tls_read(rid: u32) -> Result<Vec<u8>, JsErrorBox> {
     let c = tls_conn(rid)?;
+    let closed = TLS_CLOSED.with(|m| m.borrow().get(&rid).cloned());
     let rd = c.borrow_mut().rd.take();
     let Some(mut rd) = rd else { return Ok(Vec::new()) };
     let mut buf = vec![0u8; 65536];
-    let r = rd.read(&mut buf).await;
+    let r = match closed {
+        Some(closed) => tokio::select! {
+            r = rd.read(&mut buf) => r,
+            _ = closed.notified() => Ok(0),
+        },
+        None => rd.read(&mut buf).await,
+    };
     c.borrow_mut().rd = Some(rd);
     let n = r.map_err(|e| net_err(e, "read"))?;
     buf.truncate(n);
@@ -395,6 +439,9 @@ pub async fn op_tls_shutdown(rid: u32) -> Result<(), JsErrorBox> {
 #[op2(fast)]
 pub fn op_tls_close(rid: u32) {
     TLS_CONNS.with(|c| c.borrow_mut().remove(&rid));
+    if let Some(n) = TLS_CLOSED.with(|m| m.borrow_mut().remove(&rid)) {
+        n.notify_one();
+    }
 }
 
 #[derive(Debug)]
@@ -615,6 +662,9 @@ pub async fn op_dns_lookup(#[string] host: String) -> Result<Vec<(String, u8)>, 
 struct Udp {
     next: u32,
     socks: HashMap<u32, Rc<tokio::net::UdpSocket>>,
+    /// Signalled on close so a pending `op_udp_recv` (which holds its own socket handle)
+    /// returns instead of keeping the event loop alive forever.
+    closed: HashMap<u32, Rc<tokio::sync::Notify>>,
 }
 fn udp(state: &mut OpState) -> &mut Udp {
     if state.try_borrow::<Udp>().is_none() {
@@ -640,6 +690,7 @@ pub fn op_udp_bind(state: &mut OpState, #[string] host: &str, port: u16, reuse: 
     let rid = u.next;
     u.next += 1;
     u.socks.insert(rid, Rc::new(s));
+    u.closed.insert(rid, Rc::new(tokio::sync::Notify::new()));
     Ok(rid)
 }
 
@@ -662,10 +713,13 @@ pub struct Datagram {
 #[op2]
 #[serde]
 pub async fn op_udp_recv(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Option<Datagram>, JsErrorBox> {
-    let s = { let mut st = state.borrow_mut(); udp(&mut st).socks.get(&rid).cloned() };
-    let Some(s) = s else { return Ok(None) };
+    let (s, closed) = { let mut st = state.borrow_mut(); let u = udp(&mut st); (u.socks.get(&rid).cloned(), u.closed.get(&rid).cloned()) };
+    let (Some(s), Some(closed)) = (s, closed) else { return Ok(None) };
     let mut buf = vec![0u8; 65536];
-    let (n, from) = s.recv_from(&mut buf).await.map_err(|e| net_err(e, "recv"))?;
+    let (n, from) = tokio::select! {
+        r = s.recv_from(&mut buf) => r.map_err(|e| net_err(e, "recv"))?,
+        _ = closed.notified() => return Ok(None),
+    };
     buf.truncate(n);
     Ok(Some(Datagram { data: buf.into(), address: from.ip().to_string(), port: from.port(), family: if from.is_ipv4() { "IPv4".into() } else { "IPv6".into() } }))
 }
@@ -678,7 +732,11 @@ pub fn op_udp_addr(state: &mut OpState, rid: u32) -> Option<(String, u16)> {
 
 #[op2(fast)]
 pub fn op_udp_close(state: &mut OpState, rid: u32) {
-    udp(state).socks.remove(&rid);
+    let u = udp(state);
+    u.socks.remove(&rid);
+    if let Some(n) = u.closed.remove(&rid) {
+        n.notify_one();
+    }
 }
 
 // ---------- v8 / vm ----------

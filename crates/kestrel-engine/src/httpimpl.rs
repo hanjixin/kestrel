@@ -426,7 +426,7 @@ fn bind_listener(addr: SocketAddr) -> std::io::Result<std::net::TcpListener> {
     Ok(sock.into())
 }
 
-type ConnRx = mpsc::UnboundedReceiver<(std::net::TcpStream, std::sync::Arc<std::sync::atomic::AtomicUsize>)>;
+pub type ConnRx = mpsc::UnboundedReceiver<(std::net::TcpStream, std::sync::Arc<std::sync::atomic::AtomicUsize>)>;
 
 /// Join (or create) the acceptor for `addr`. Connections go to the worker with the fewest
 /// live connections, so long-lived clients spread evenly across runtimes.
@@ -485,22 +485,27 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
     let addr: SocketAddr = format!("{host}:{port}")
         .parse()
         .map_err(|e| JsErrorBox::type_error(format!("bad address {host}:{port}: {e}")))?;
-    let mut conns = join_hub(addr, expected_workers.max(1) as usize).map_err(|e| JsErrorBox::generic(format!("listen {addr}: {e}")))?;
+    let mut conns = Some(join_hub(addr, expected_workers.max(1) as usize).map_err(|e| JsErrorBox::generic(format!("listen {addr}: {e}")))?);
 
     let (tx, rx) = mpsc::channel::<IncomingReq>(16384);
     HYPER_TX.with(|h| *h.borrow_mut() = Some(tx.clone()));
     let use_fast = crate::fastpath::enabled() && crate::netimpl::TLS_ACCEPTOR.with(|t| t.borrow().is_none()) && !raw_mode() && crate::fastpath::start();
+    // The fast loop drains the receiver itself (see fastpath::Fast::rxs); it owns each
+    // connection and decrements the live count when it closes.
+    if use_fast {
+        if let Some(rx) = conns.take() {
+            if !crate::fastpath::adopt(rx) {
+                // Loop not running after all: nothing to serve this receiver; fall back is
+                // impossible once the receiver is moved, so this branch must not happen.
+                unreachable!("fast loop started but refused the receiver");
+            }
+        }
+    }
     tokio::spawn(async move {
+        let Some(mut conns) = conns else { return };
         while let Some((std_stream, live)) = conns.recv().await {
             if std_stream.set_nonblocking(true).is_err() {
                 live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                continue;
-            }
-            if use_fast {
-                // The fast loop owns the connection and decrements the live count when it closes.
-                if !crate::fastpath::register(std_stream, live.clone()) {
-                    live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                }
                 continue;
             }
             let Ok(stream) = tokio::net::TcpStream::from_std(std_stream) else { live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); continue };

@@ -40,6 +40,68 @@ struct Fast {
     conns: Vec<Option<Conn>>,
     free: Vec<usize>,
     done_tx: tokio::sync::mpsc::UnboundedSender<(usize, u32, Outgoing)>,
+    /// Accepted connections from the acceptor threads, one receiver per listening port.
+    /// The loop itself drains these: a separate task woken from another thread lands on
+    /// tokio's inject queue, which the current-thread scheduler consults only every 31
+    /// ticks, and that left freshly accepted connections unserved for up to a second
+    /// under load (measured: first-second p99 of 700 ms at 4096 connections).
+    rxs: Vec<httpimpl::ConnRx>,
+    new_rx: Arc<tokio::sync::Notify>,
+}
+
+type Accepted = (std::net::TcpStream, Arc<std::sync::atomic::AtomicUsize>);
+
+/// Hand a port's connection receiver to this worker's fast loop. Returns false if the loop
+/// is not running (the caller then serves the receiver itself).
+pub fn adopt(rx: httpimpl::ConnRx) -> bool {
+    with_fast(|fast| {
+        fast.rxs.push(rx);
+        fast.new_rx.notify_one();
+    })
+    .is_some()
+}
+
+/// Poll every adopted receiver once; `Pending` (with wakers registered) if none has a connection.
+fn recv_any() -> impl std::future::Future<Output = Accepted> {
+    std::future::poll_fn(|cx| {
+        with_fast(|fast| {
+            let mut i = 0;
+            while i < fast.rxs.len() {
+                match fast.rxs[i].poll_recv(cx) {
+                    std::task::Poll::Ready(Some(x)) => return std::task::Poll::Ready(x),
+                    std::task::Poll::Ready(None) => {
+                        fast.rxs.swap_remove(i);
+                    }
+                    std::task::Poll::Pending => i += 1,
+                }
+            }
+            std::task::Poll::Pending
+        })
+        .unwrap_or(std::task::Poll::Pending)
+    })
+}
+
+fn try_recv_any() -> Option<Accepted> {
+    with_fast(|fast| {
+        let mut i = 0;
+        while i < fast.rxs.len() {
+            match fast.rxs[i].try_recv() {
+                Ok(x) => return Some(x),
+                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                    fast.rxs.swap_remove(i);
+                }
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => i += 1,
+            }
+        }
+        None
+    })
+    .flatten()
+}
+
+fn register_accepted((stream, live): Accepted) {
+    if !register(stream, live.clone()) {
+        live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+    }
 }
 
 thread_local! {
@@ -72,35 +134,69 @@ pub fn start() -> bool {
     }
     let poller = Arc::new(poller);
     let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel::<(usize, u32, Outgoing)>();
-    let fast = Rc::new(RefCell::new(Fast { poller: poller.clone(), conns: Vec::new(), free: Vec::new(), done_tx }));
+    let new_rx = Arc::new(tokio::sync::Notify::new());
+    let fast = Rc::new(RefCell::new(Fast { poller: poller.clone(), conns: Vec::new(), free: Vec::new(), done_tx, rxs: Vec::new(), new_rx: new_rx.clone() }));
     FAST.with(|f| *f.borrow_mut() = Some(fast));
     let Ok(afd) = tokio::io::unix::AsyncFd::new(PollFd(poller.as_raw_fd())) else { return false };
     tokio::spawn(async move {
         let mut events = Events::new();
+        // True while the poller may still hold ready events we have not served. Under
+        // sustained load a level-triggered set of thousands of keep-alive connections is
+        // never empty, so the loop serves a bounded number of batches and then yields:
+        // otherwise newly accepted connections (handed over through a channel on this
+        // runtime), timers and async-handler completions starve for seconds.
+        let mut backlog = false;
         loop {
+            if backlog {
+                while let Ok((key, gen, out)) = done_rx.try_recv() {
+                    complete_async(key, gen, out);
+                }
+                while let Some(acc) = try_recv_any() {
+                    register_accepted(acc);
+                }
+                tokio::task::yield_now().await;
+                backlog = drain(&poller, &mut events, None);
+                continue;
+            }
             tokio::select! {
                 guard = afd.readable() => {
                     let Ok(mut guard) = guard else { return };
-                    // Drain everything that is ready; clear tokio's readiness when the poller is empty.
-                    loop {
-                        events.clear();
-                        let n = match poller.wait(&mut events, Some(Duration::ZERO)) { Ok(n) => n, Err(_) => 0 };
-                        if n == 0 {
-                            guard.clear_ready();
-                            break;
-                        }
-                        let evs: Vec<Event> = events.iter().collect();
-                        for ev in evs {
-                            handle_event(ev);
-                        }
-                    }
+                    backlog = drain(&poller, &mut events, Some(&mut guard));
                 }
                 Some((key, gen, out)) = done_rx.recv() => {
                     complete_async(key, gen, out);
                 }
+                acc = recv_any() => {
+                    register_accepted(acc);
+                }
+                _ = new_rx.notified() => {}
             }
         }
     });
+    true
+}
+
+/// Batches served per scheduler turn before yielding to the rest of the runtime.
+const DRAIN_BUDGET: usize = 2;
+
+/// Serve up to `DRAIN_BUDGET` batches of ready events. Returns true if the poller may still
+/// have ready events (budget exhausted). When the poller is empty, clears tokio's
+/// readiness for the poller fd (if a guard was given) so the task sleeps until the next event.
+fn drain(poller: &Poller, events: &mut Events, mut guard: Option<&mut tokio::io::unix::AsyncFdReadyGuard<'_, PollFd>>) -> bool {
+    for _ in 0..DRAIN_BUDGET {
+        events.clear();
+        let n = match poller.wait(events, Some(Duration::ZERO)) { Ok(n) => n, Err(_) => 0 };
+        if n == 0 {
+            if let Some(g) = guard.as_mut() {
+                g.clear_ready();
+            }
+            return false;
+        }
+        let evs: Vec<Event> = events.iter().collect();
+        for ev in evs {
+            handle_event(ev);
+        }
+    }
     true
 }
 
