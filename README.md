@@ -34,13 +34,15 @@ Verified by `test/compat` (each file runs under node and kestrel and the outputs
 - `net.mjs`, `unix.mjs`: `net.createServer` + `net.connect` echo over TCP and Unix domain sockets, `tls.createServer` + `tls.connect`, `fs.watch` events, ECONNREFUSED. Identical.
 - `fork.mjs`: `child_process.fork` with the IPC channel (`process.send` / `'message'` both ways, exit codes). Identical.
 - `misc.mjs`: `dgram` UDP round trip, `vm.runInThisContext`/`runInNewContext`/`Script`, `v8.getHeapStatistics`, `perf_hooks`, `cluster` entry points. Identical.
+- `cluster.mjs`: primary forks two workers that share one port, both answer, signals on kill. Identical.
+- `als.mjs`: `AsyncLocalStorage` across `await`, timers, `setImmediate`, `nextTick`, nested `run`/`exit`, concurrent stores, `AsyncResource.bind`. Identical.
 - `worker.mjs`: `worker_threads.Worker` with `workerData`, `postMessage` both ways, `process.exit` code in the worker. Identical.
 - `https.mjs`: `https.createServer` with a self-signed key/cert served by rustls, consumed by `fetch`. Identical.
 - `http.mjs`, `serve.ts`: `http.createServer` request/response with bodies and headers, `http.get`, `fetch`, `Kestrel.serve` with JSON, byte bodies, custom headers, sync and async handlers.
 - `esm.mjs`, `npm.mjs`, `realworld.cjs`: ESM ↔ CommonJS interop (both directions, including `require(esm)`), and unmodified packages from a real `node_modules`: marked, nanoid, jszip, pako, hash.js, is-url, inherits, docx, pptxgenjs, pdf-lib, pngjs, jpeg-js, image-size.
 - Scheduling order of `process.nextTick`, microtasks, `setImmediate` and timers matches Node.
 
-Builtins: assert, buffer, child_process (incl. `fork` IPC), cluster (processes sharing a port via `SO_REUSEPORT`), constants, crypto (hashes, HMAC, KDFs, AES/ChaCha ciphers, RSA/ECDSA sign/verify and key pairs, webcrypto subset), dgram, dns, events, fs (+promises, fd API, streams, `watch`/`watchFile`), http, https, module, net (TCP + Unix sockets), os, path, perf_hooks, process, querystring, readline, stream, string_decoder, sys, timers, tls (client and server), tty, url, util, v8 (heap statistics, serialize), vm (scripts in this or a fresh context), worker_threads, zlib (+brotli). Not supported by design: native addons (`.node`/N-API). Still missing and throwing `ERR_METHOD_NOT_IMPLEMENTED`: `http2`, `inspector`, `async_hooks`'s full API (`AsyncLocalStorage` is not there yet), `dgram` multicast, `vm` module-linking APIs.
+Builtins: assert, buffer, child_process (incl. `fork` IPC), cluster (processes sharing a port via `SO_REUSEPORT`), constants, crypto (hashes, HMAC, KDFs, AES/ChaCha ciphers, RSA/ECDSA sign/verify and key pairs, webcrypto subset), dgram, dns, events, fs (+promises, fd API, streams, `watch`/`watchFile`), http, https, module, net (TCP + Unix sockets), os, path, perf_hooks, process, querystring, readline, stream, string_decoder, sys, timers, tls (client and server), tty, url, util, v8 (heap statistics, serialize), vm (scripts in this or a fresh context), worker_threads, zlib (+brotli). Not supported by design: native addons (`.node`/N-API). async_hooks (`AsyncLocalStorage`, `AsyncResource`; `createHook` is a no-op). Still missing and throwing `ERR_METHOD_NOT_IMPLEMENTED`: `http2`, `inspector`, `dgram` multicast, `vm` module-linking APIs.
 
 ## Measurements
 
@@ -68,8 +70,8 @@ HTTP hello world, `wrk -t2 -c256`, client and server on the same machine (`bench
 |---|---|---|---|
 | node 22, 1 process | 133 k | 1.92 ms | 9.0 ms |
 | node 22 cluster, 10 processes | 221 k | 0.57 ms | 4.4 ms |
-| bun 1.3, 1 process | 277 k | 0.90 ms | 1.54 ms |
-| kestrel, 1 worker thread | 311 k | 0.82 ms | 0.93 ms |
+| bun 1.3, 1 process | 282 k | 0.89 ms | 1.23 ms |
+| kestrel, 1 worker thread | 315 k | 0.80 ms | 0.91 ms |
 
 ### Linux x86_64, AMD EPYC 7542 (128 vCPU), Ubuntu 22.04, 2026-10-16
 
@@ -78,11 +80,11 @@ Servers and `wrk` on the same host over loopback (the inter-node link of the tes
 | server | 256 connections (`-t8`) | 4096 connections (`-t32`) |
 |---|---|---|
 | node, 1 process | 35–39 k (p99 275–400 ms) | 34–36 k |
-| bun, 1 process | 78–86 k (p99 4.2–6.0 ms) | 55–60 k (p99 88–114 ms) |
-| kestrel, 1 worker thread | 80–84 k (p99 3.6–4.8 ms) | 52–56 k (p99 120–620 ms) |
+| bun, 1 process | 78–86 k (p99 4.2–6.3 ms) | 55–60 k (p99 88–206 ms) |
+| kestrel, 1 worker thread | 80–84 k (p99 3.5–5.5 ms) | 52–56 k (p99 81–620 ms) |
 | node cluster, 128 processes | 402–404 k | 780–822 k |
-| bun `reusePort`, 128 processes | 458–467 k | 1.21–1.37 M |
-| kestrel, 128 worker threads, one process | 426–449 k | 1.11–1.30 M |
+| bun `reusePort`, 128 processes | 458–467 k | 1.21–1.38 M |
+| kestrel, 128 worker threads, one process | 426–449 k | 1.16–1.32 M |
 | kestrel raw hyper, no JS (ceiling) | 433 k | 1.40–1.56 M |
 
 CPU on the same host: `fib(35)` node 110 ms, bun 71 ms, kestrel V8-only 108 ms, native tier 70 ms; cold int-heavy benchmark kestrel V8-only 297 ms, native tier 155 ms.
@@ -91,8 +93,8 @@ What this says, honestly:
 
 - Startup and memory beat Node and Bun.
 - The native tier beats V8 on call-heavy and integer-heavy code (1.6× and 1.5×; 2.8× over Node on the cold benchmark). On float loops V8's TurboFan is already at the hardware's latency floor and the native tier ties it.
-- HTTP per core: 12 % ahead of Bun on macOS; on Linux ahead of Bun at 256 connections and 5–8 % behind at 4096 connections, where one kestrel thread also shows a much worse tail (p99 120–620 ms vs ~100 ms; the cause is not yet isolated, see `docs/ARCHITECTURE.md`). About 2.2× Node per core on both systems.
-- HTTP on all cores: one kestrel process serves 1.05× (256 connections) to 1.4× (4096 connections) what a 128-process Node cluster serves, and 0.92–0.98× of Bun's 128-process `reusePort` setup, with a higher tail (p99 ~12 ms vs 3.6 ms at 4096 connections). The remaining gap to the raw-hyper ceiling is the JS handler itself plus GC pauses.
+- HTTP per core: 12 % ahead of Bun on macOS; on Linux ahead of Bun at 256 connections and 5–8 % behind at 4096 connections. `perf` on the Linux node shows 85 % of the time in the kernel's TCP/epoll paths and an in-server latency p99 of 3 µs, so per-core HTTP is syscall-bound and parity with Bun is the ceiling without a different I/O model (io_uring). One kestrel thread under 4096 keep-alive connections has an erratic tail (p99 81–620 ms run to run; Bun 88–206 ms); the cause is not isolated. About 2.2× Node per core on both systems.
+- HTTP on all cores: one kestrel process serves 1.05× (256 connections) to 1.4–1.6× (4096 connections) what a 128-process Node cluster serves, and 0.90–0.96× of Bun's 128-process `reusePort` setup, with a higher tail (p99 9–15 ms vs 3 ms at 4096 connections). The raw-hyper ceiling is 10–20 % above.
 
 ## Layout
 
