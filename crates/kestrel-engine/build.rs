@@ -22,7 +22,7 @@ mod watchimpl;
 mod fastpath {
     pub fn enabled() -> bool { false }
     pub fn start() -> bool { false }
-    pub fn register(_: std::net::TcpStream) -> bool { false }
+    pub fn register(_: std::net::TcpStream, _: std::sync::Arc<std::sync::atomic::AtomicUsize>) -> bool { false }
 }
 
 /// Snapshot-time stubs for things netimpl reaches into.

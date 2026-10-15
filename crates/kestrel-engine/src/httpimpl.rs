@@ -497,13 +497,10 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
                 continue;
             }
             if use_fast {
-                // The fast loop owns the connection; the live-count guard is dropped when it closes.
-                // (Approximation: count it as closed immediately for balancing purposes after accept.)
-                if crate::fastpath::register(std_stream) {
+                // The fast loop owns the connection and decrements the live count when it closes.
+                if !crate::fastpath::register(std_stream, live.clone()) {
                     live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
-                    continue;
                 }
-                live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                 continue;
             }
             let Ok(stream) = tokio::net::TcpStream::from_std(std_stream) else { live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); continue };

@@ -22,6 +22,8 @@ const READ_CHUNK: usize = 16 * 1024;
 const MAX_HEADER: usize = 64 * 1024;
 
 struct Conn {
+    /// Live-connection counter of this worker (for least-loaded accept); decremented on drop.
+    live: Option<Arc<std::sync::atomic::AtomicUsize>>,
     stream: std::net::TcpStream,
     rbuf: Vec<u8>,
     wbuf: Vec<u8>,
@@ -102,8 +104,16 @@ pub fn start() -> bool {
     true
 }
 
+impl Drop for Conn {
+    fn drop(&mut self) {
+        if let Some(l) = &self.live {
+            l.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
 /// Register an accepted connection with this worker's fast loop.
-pub fn register(stream: std::net::TcpStream) -> bool {
+pub fn register(stream: std::net::TcpStream, live: Arc<std::sync::atomic::AtomicUsize>) -> bool {
     FAST.with(|f| {
         let f = f.borrow();
         let Some(fast) = f.as_ref() else { return false };
@@ -125,23 +135,13 @@ pub fn register(stream: std::net::TcpStream) -> bool {
             fast.free.push(key);
             return false;
         }
-        fast.conns[key] = Some(Conn { stream, rbuf: Vec::with_capacity(READ_CHUNK), wbuf: Vec::new(), waiting: false, close_after: false, want_write: false, gen });
+        fast.conns[key] = Some(Conn { live: Some(live), stream, rbuf: Vec::with_capacity(READ_CHUNK), wbuf: Vec::new(), waiting: false, close_after: false, want_write: false, gen });
         true
     })
 }
 
 fn with_fast<R>(f: impl FnOnce(&mut Fast) -> R) -> Option<R> {
     FAST.with(|c| c.borrow().as_ref().map(|fast| f(&mut fast.borrow_mut())))
-}
-
-fn close(fast: &mut Fast, key: usize) {
-    if let Some(c) = fast.conns[key].take() {
-        let _ = fast.poller.delete(&c.stream);
-        drop(c);
-    }
-    fast.free.push(key);
-    // Keep the generation moving so stale async completions are ignored.
-    fast.conns[key] = None;
 }
 
 fn handle_event(ev: Event) {
@@ -159,13 +159,17 @@ fn handle_event(ev: Event) {
     if alive && conn.wbuf.is_empty() && conn.close_after {
         alive = false;
     }
+    finish(conn, key, alive);
+}
+
+/// Put the connection back (with interest matching its state) or close it.
+fn finish(mut conn: Conn, key: usize, alive: bool) {
     with_fast(|fast| {
         if alive {
-            // Adjust interest if the write state changed.
             let want_write = !conn.wbuf.is_empty();
             if want_write != conn.want_write {
                 conn.want_write = want_write;
-                let interest = if want_write { Event::all(key) } else { Event::readable(key) };
+                let interest = Event::new(key, !conn.waiting, want_write);
                 let _ = fast.poller.modify_with_mode(&conn.stream, interest, PollMode::Level);
             }
             fast.conns[key] = Some(conn);
@@ -174,6 +178,15 @@ fn handle_event(ev: Event) {
             drop(conn);
             fast.conns[key] = None;
             fast.free.push(key);
+        }
+    });
+}
+
+fn set_interest(conn: &mut Conn, key: usize, readable: bool, writable: bool) {
+    conn.want_write = writable;
+    FAST.with(|f| {
+        if let Some(fast) = f.borrow().as_ref() {
+            let _ = fast.borrow().poller.modify_with_mode(&conn.stream, Event::new(key, readable, writable), PollMode::Level);
         }
     });
 }
@@ -269,16 +282,10 @@ fn process_buffer(conn: &mut Conn, key: usize) -> bool {
                     return flush(conn);
                 }
             }
-            Step::Pending(rrx) => {
+            Step::Pending(rrx) | Step::Queue(_, rrx) => {
                 conn.waiting = true;
                 conn.close_after = close_after;
-                spawn_completion(key, conn.gen, rrx);
-                break;
-            }
-            Step::Queue(_, rrx) => {
-                // No handler registered on this thread: behave like Pending.
-                conn.waiting = true;
-                conn.close_after = close_after;
+                set_interest(conn, key, false, !conn.wbuf.is_empty());
                 spawn_completion(key, conn.gen, rrx);
                 break;
             }
@@ -322,22 +329,13 @@ fn complete_async(key: usize, gen: u32, out: Outgoing) {
     if alive && conn.wbuf.is_empty() && conn.close_after {
         alive = false;
     }
-    with_fast(|fast| {
-        if alive {
-            let want_write = !conn.wbuf.is_empty();
-            if want_write != conn.want_write {
-                conn.want_write = want_write;
-                let interest = if want_write { Event::all(key) } else { Event::readable(key) };
-                let _ = fast.poller.modify_with_mode(&conn.stream, interest, PollMode::Level);
-            }
-            fast.conns[key] = Some(conn);
-        } else {
-            let _ = fast.poller.delete(&conn.stream);
-            drop(conn);
-            fast.conns[key] = None;
-            fast.free.push(key);
-        }
-    });
+    // Re-arm read interest (dropped while the handler was pending) unless we went async again.
+    if alive {
+        let w = !conn.wbuf.is_empty();
+        let r = !conn.waiting;
+        set_interest(&mut conn, key, r, w);
+    }
+    finish(conn, key, alive);
 }
 
 /// Write as much of `wbuf` as the socket takes. Returns false on a fatal error.

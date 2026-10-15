@@ -23,7 +23,7 @@ if [[ $step == upload || $step == all ]]; then
   rsh "cd /tmp/kb && for h in $A $B; do sshpass -p '$P' scp -o StrictHostKeyChecking=accept-new kb-bench.tgz kestrel-amd64.gz ubuntu@\$h:/tmp/ && sshpass -p '$P' ssh ubuntu@\$h 'mkdir -p ~/kb && cd ~/kb && tar xzf /tmp/kb-bench.tgz && gunzip -c /tmp/kestrel-amd64.gz > kestrel && chmod +x kestrel && ./kestrel --version 2>/dev/null; nproc; uname -m'; done"
 fi
 if [[ $step == scripts ]]; then
-  tar czf /tmp/kb-scripts.tgz bench/remote/node_a.sh bench/remote/node_b.sh bench/remote/diag.sh bench/remote/diag2.sh bench/remote/diag3.sh bench/hello_bun_cluster.ts bench/hello_kestrel.ts examples/bench_fib.ts examples/bench_cold.ts examples/aot_check.ts
+  tar czf /tmp/kb-scripts.tgz bench/remote/node_a.sh bench/remote/node_b.sh bench/remote/diag.sh bench/remote/diag2.sh bench/remote/diag3.sh bench/remote/diag4.sh bench/hello_bun_cluster.ts bench/hello_kestrel.ts examples/bench_fib.ts examples/bench_cold.ts examples/aot_check.ts
   rsh "mkdir -p /tmp/kb"; rcp /tmp/kb-scripts.tgz
   rsh "cd /tmp/kb && for h in $A $B; do sshpass -p '$P' scp kb-scripts.tgz ubuntu@\$h:/tmp/ && sshpass -p '$P' ssh ubuntu@\$h 'cd ~/kb && tar xzf /tmp/kb-scripts.tgz'; done; sshpass -p '$P' ssh ubuntu@$A \"echo '$P' | sudo -S apt-get install -y -qq wrk >/dev/null 2>&1; which wrk\""
 fi
