@@ -23,7 +23,7 @@ export function createHash(algo) { return new Hash(algo); }
 export function createHmac(algo, key) { return new Hmac(algo, key); }
 export function hash(algo, data, enc = "hex") { return createHash(algo).update(data).digest(enc); }
 export function getHashes() { return ALGOS.slice(); }
-export function getCiphers() { return []; }
+export function getCiphers() { return Object.keys(CIPHERS); }
 export function getCurves() { return []; }
 export function randomBytes(n, cb) { const b = Buffer.from(ops.op_k_random_bytes(n >>> 0)); if (cb) { queueMicrotask(() => cb(null, b)); return; } return b; }
 export function randomFillSync(buf, offset = 0, size) { const u = toUint8(buf); size = size ?? u.length - offset; u.set(ops.op_k_random_bytes(size), offset); return buf; }
@@ -32,27 +32,102 @@ export function randomUUID() { return ops.op_k_random_uuid(); }
 export function randomInt(min, max, cb) { if (max === undefined || typeof max === "function") { cb = max; max = min; min = 0; } const range = max - min; const b = ops.op_k_random_bytes(6); let v = 0; for (let i = 0; i < 6; i++) v = v * 256 + b[i]; const r = min + (v % range); if (cb) { queueMicrotask(() => cb(null, r)); return; } return r; }
 export function getRandomValues(arr) { if (!ArrayBuffer.isView(arr)) throw new TypeError("expected a TypedArray"); new Uint8Array(arr.buffer, arr.byteOffset, arr.byteLength).set(ops.op_k_random_bytes(arr.byteLength)); return arr; }
 export function timingSafeEqual(a, b) { a = toUint8(a); b = toUint8(b); if (a.length !== b.length) throw nodeError("ERR_CRYPTO_TIMING_SAFE_EQUAL_LENGTH", "Input buffers must have the same byte length", RangeError); let r = 0; for (let i = 0; i < a.length; i++) r |= a[i] ^ b[i]; return r === 0; }
-export function pbkdf2Sync() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.pbkdf2 is not implemented yet"); }
-export function pbkdf2(...args) { const cb = args.pop(); queueMicrotask(() => cb(new Error("crypto.pbkdf2 is not implemented yet"))); }
-export function scryptSync() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.scrypt is not implemented yet"); }
-export function createCipheriv() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.createCipheriv is not implemented yet"); }
-export function createDecipheriv() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.createDecipheriv is not implemented yet"); }
-export function createSign() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.createSign is not implemented yet"); }
-export function createVerify() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.createVerify is not implemented yet"); }
-export function generateKeyPairSync() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.generateKeyPair is not implemented yet"); }
+const bytesOf = (x, enc) => (typeof x === "string" ? Buffer.from(x, enc) : toUint8(x));
+export function pbkdf2Sync(password, salt, iterations, keylen, digest = "sha1") { return Buffer.from(ops.op_pbkdf2(bytesOf(password), bytesOf(salt), iterations >>> 0, keylen >>> 0, String(digest))); }
+export function pbkdf2(password, salt, iterations, keylen, digest, cb) { if (typeof digest === "function") { cb = digest; digest = "sha1"; } let r, err = null; try { r = pbkdf2Sync(password, salt, iterations, keylen, digest); } catch (e) { err = e; } queueMicrotask(() => (err ? cb(err) : cb(null, r))); }
+export function scryptSync(password, salt, keylen, opts = {}) { const N = opts.N ?? opts.cost ?? 16384, r = opts.r ?? opts.blockSize ?? 8, p = opts.p ?? opts.parallelization ?? 1; return Buffer.from(ops.op_scrypt(bytesOf(password), bytesOf(salt), N, r, p, keylen >>> 0)); }
+export function scrypt(password, salt, keylen, opts, cb) { if (typeof opts === "function") { cb = opts; opts = {}; } let r, err = null; try { r = scryptSync(password, salt, keylen, opts); } catch (e) { err = e; } queueMicrotask(() => (err ? cb(err) : cb(null, r))); }
+export function hkdfSync(digest, ikm, salt, info, keylen) { const out = ops.op_hkdf(String(digest), bytesOf(ikm), bytesOf(salt), bytesOf(info), keylen >>> 0); return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength); }
+export function hkdf(digest, ikm, salt, info, keylen, cb) { let r, err = null; try { r = hkdfSync(digest, ikm, salt, info, keylen); } catch (e) { err = e; } queueMicrotask(() => (err ? cb(err) : cb(null, r))); }
+
+const CIPHERS = { "aes-128-gcm": [16, 12, true], "aes-256-gcm": [32, 12, true], "chacha20-poly1305": [32, 12, true], "aes-128-cbc": [16, 16, false], "aes-256-cbc": [32, 16, false], "aes-128-ctr": [16, 16, false], "aes-256-ctr": [32, 16, false] };
+class CipherBase {
+  #algo; #key; #iv; #chunks = []; #aad = []; #encrypt; #tag = null; #authTag = null; #done = false; #aead;
+  constructor(algo, key, iv, encrypt, opts = {}) {
+    this.#algo = String(algo).toLowerCase();
+    const spec = CIPHERS[this.#algo];
+    if (!spec) throw nodeError("ERR_CRYPTO_UNKNOWN_CIPHER", "Unknown cipher");
+    this.#key = bytesOf(key); this.#iv = iv == null ? new Uint8Array(0) : bytesOf(iv); this.#encrypt = encrypt; this.#aead = spec[2];
+    if (this.#key.length !== spec[0]) throw nodeError("ERR_CRYPTO_INVALID_KEYLEN", "Invalid key length", RangeError);
+    if (this.#iv.length < spec[1]) throw nodeError("ERR_CRYPTO_INVALID_IV", "Invalid initialization vector", TypeError);
+  }
+  setAAD(buf) { this.#aad.push(bytesOf(buf)); return this; }
+  setAutoPadding() { return this; }
+  update(data, inputEnc, outputEnc) {
+    // Buffered: block ciphers need the full input for padding, AEADs for the tag.
+    this.#chunks.push(bytesOf(data, inputEnc));
+    const empty = Buffer.alloc(0);
+    return outputEnc && outputEnc !== "buffer" ? "" : empty;
+  }
+  final(outputEnc) {
+    if (this.#done) throw nodeError("ERR_CRYPTO_INVALID_STATE", "Unsupported state or unable to authenticate data");
+    this.#done = true;
+    let input = Buffer.concat(this.#chunks);
+    if (this.#aead && !this.#encrypt) { if (!this.#authTag) throw nodeError("ERR_CRYPTO_INVALID_STATE", "Unsupported state or unable to authenticate data"); input = Buffer.concat([input, this.#authTag]); }
+    let out = Buffer.from(ops.op_cipher(this.#algo, this.#encrypt, this.#key, this.#iv, input, Buffer.concat(this.#aad)));
+    if (this.#aead && this.#encrypt) { this.#tag = out.subarray(out.length - 16); out = out.subarray(0, out.length - 16); }
+    return outputEnc && outputEnc !== "buffer" ? out.toString(outputEnc) : out;
+  }
+  getAuthTag() { if (!this.#tag) throw nodeError("ERR_CRYPTO_INVALID_STATE", "Invalid state for operation getAuthTag"); return Buffer.from(this.#tag); }
+  setAuthTag(tag) { this.#authTag = bytesOf(tag); return this; }
+}
+export class Cipheriv extends CipherBase { constructor(a, k, iv, o) { super(a, k, iv, true, o); } }
+export class Decipheriv extends CipherBase { constructor(a, k, iv, o) { super(a, k, iv, false, o); } }
+export function createCipheriv(algo, key, iv, opts) { return new Cipheriv(algo, key, iv, opts); }
+export function createDecipheriv(algo, key, iv, opts) { return new Decipheriv(algo, key, iv, opts); }
+export function createSign() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.createSign (RSA/ECDSA) is not implemented in kestrel yet"); }
+export function createVerify() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.createVerify (RSA/ECDSA) is not implemented in kestrel yet"); }
+export function generateKeyPairSync() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "crypto.generateKeyPair is not implemented in kestrel yet"); }
+export function generateKeySync(type, { length }) { return { type: "secret", export: () => randomBytes(length / 8), symmetricKeySize: length / 8 }; }
+export function createSecretKey(key, enc) { const k = bytesOf(key, enc); return { type: "secret", symmetricKeySize: k.length, export: () => Buffer.from(k), _raw: k }; }
+export function getCipherInfo(name) { const s = CIPHERS[String(name).toLowerCase()]; return s ? { name: String(name).toLowerCase(), keyLength: s[0], ivLength: s[1], mode: s[2] ? "gcm" : name.includes("cbc") ? "cbc" : "ctr" } : undefined; }
 export const constants = {};
 
+const algName = (a) => (typeof a === "string" ? a : a.name).toUpperCase();
+const hashName = (h) => String(typeof h === "string" ? h : h.name).toLowerCase().replace("-", "");
+class CryptoKey { constructor(type, algorithm, extractable, usages, raw) { this.type = type; this.algorithm = algorithm; this.extractable = extractable; this.usages = usages; this._raw = raw; } get [Symbol.toStringTag]() { return "CryptoKey"; } }
 const subtle = {
-  async digest(algo, data) { const name = typeof algo === "string" ? algo : algo.name; return Buffer.from(ops.op_k_hash(norm(name), toUint8(data))).buffer; },
-  async importKey() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.importKey is not implemented yet"); },
-  async sign() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.sign is not implemented yet"); },
-  async verify() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.verify is not implemented yet"); },
-  async encrypt() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.encrypt is not implemented yet"); },
-  async decrypt() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.decrypt is not implemented yet"); },
-  async generateKey() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.generateKey is not implemented yet"); },
+  async digest(algo, data) { return Buffer.from(ops.op_k_hash(hashName(algo), toUint8(data))).buffer; },
+  async importKey(format, keyData, algorithm, extractable, usages) {
+    if (format !== "raw") throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.importKey: only 'raw' keys are supported yet");
+    const alg = typeof algorithm === "string" ? { name: algorithm } : { ...algorithm };
+    if (alg.hash) alg.hash = { name: typeof alg.hash === "string" ? alg.hash : alg.hash.name };
+    const raw = toUint8(keyData);
+    if (alg.name.toUpperCase().startsWith("AES")) alg.length = raw.length * 8;
+    return new CryptoKey("secret", alg, extractable, usages, new Uint8Array(raw));
+  },
+  async exportKey(format, key) { if (format !== "raw") throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.exportKey: only 'raw' is supported yet"); return key._raw.slice().buffer; },
+  async generateKey(algorithm, extractable, usages) { const alg = typeof algorithm === "string" ? { name: algorithm } : { ...algorithm }; const len = alg.length ? alg.length / 8 : 32; return new CryptoKey("secret", alg, extractable, usages, ops.op_k_random_bytes(len)); },
+  async sign(algorithm, key, data) { if (algName(algorithm) !== "HMAC") throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.sign: only HMAC is supported yet"); return Buffer.from(ops.op_k_hmac(hashName(key.algorithm.hash), key._raw, toUint8(data))).buffer; },
+  async verify(algorithm, key, signature, data) { const mac = Buffer.from(ops.op_k_hmac(hashName(key.algorithm.hash), key._raw, toUint8(data))); const sig = Buffer.from(toUint8(signature)); return mac.length === sig.length && timingSafeEqual(mac, sig); },
+  async encrypt(algorithm, key, data) {
+    const name = algName(algorithm);
+    if (name === "AES-GCM") { const out = ops.op_cipher(key._raw.length === 16 ? "aes-128-gcm" : "aes-256-gcm", true, key._raw, toUint8(algorithm.iv), toUint8(data), algorithm.additionalData ? toUint8(algorithm.additionalData) : new Uint8Array(0)); return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength); }
+    if (name === "AES-CBC") { const out = ops.op_cipher(key._raw.length === 16 ? "aes-128-cbc" : "aes-256-cbc", true, key._raw, toUint8(algorithm.iv), toUint8(data), new Uint8Array(0)); return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength); }
+    if (name === "AES-CTR") { const out = ops.op_cipher(key._raw.length === 16 ? "aes-128-ctr" : "aes-256-ctr", true, key._raw, toUint8(algorithm.counter), toUint8(data), new Uint8Array(0)); return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength); }
+    throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.encrypt: " + name + " is not supported yet");
+  },
+  async decrypt(algorithm, key, data) {
+    const name = algName(algorithm);
+    const run = (a, iv) => { const out = ops.op_cipher(a, false, key._raw, toUint8(iv), toUint8(data), algorithm.additionalData ? toUint8(algorithm.additionalData) : new Uint8Array(0)); return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength); };
+    if (name === "AES-GCM") return run(key._raw.length === 16 ? "aes-128-gcm" : "aes-256-gcm", algorithm.iv);
+    if (name === "AES-CBC") return run(key._raw.length === 16 ? "aes-128-cbc" : "aes-256-cbc", algorithm.iv);
+    if (name === "AES-CTR") return run(key._raw.length === 16 ? "aes-128-ctr" : "aes-256-ctr", algorithm.counter);
+    throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.decrypt: " + name + " is not supported yet");
+  },
+  async deriveBits(algorithm, key, length) {
+    const name = algName(algorithm);
+    if (name === "PBKDF2") { const out = ops.op_pbkdf2(key._raw, toUint8(algorithm.salt), algorithm.iterations >>> 0, length / 8, hashName(algorithm.hash)); return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength); }
+    if (name === "HKDF") { const out = ops.op_hkdf(hashName(algorithm.hash), key._raw, toUint8(algorithm.salt), toUint8(algorithm.info), length / 8); return out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength); }
+    throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.deriveBits: " + name + " is not supported yet");
+  },
+  async deriveKey(algorithm, baseKey, derivedAlg, extractable, usages) { const len = derivedAlg.length ?? 256; const bits = await subtle.deriveBits(algorithm, baseKey, len); return subtle.importKey("raw", bits, derivedAlg, extractable, usages); },
+  async wrapKey() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.wrapKey is not supported yet"); },
+  async unwrapKey() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.unwrapKey is not supported yet"); },
 };
+export { CryptoKey };
 export const webcrypto = { subtle, getRandomValues, randomUUID, get [Symbol.toStringTag]() { return "Crypto"; } };
 export { subtle };
 
-const crypto = { createHash, createHmac, hash, getHashes, getCiphers, getCurves, randomBytes, randomFillSync, randomFill, randomUUID, randomInt, getRandomValues, timingSafeEqual, pbkdf2Sync, pbkdf2, scryptSync, createCipheriv, createDecipheriv, createSign, createVerify, generateKeyPairSync, constants, webcrypto, subtle, Hash, Hmac };
+const crypto = { createHash, createHmac, hash, getHashes, getCiphers, getCurves, randomBytes, randomFillSync, randomFill, randomUUID, randomInt, getRandomValues, timingSafeEqual, pbkdf2Sync, pbkdf2, scryptSync, scrypt, hkdfSync, hkdf, createCipheriv, createDecipheriv, Cipheriv, Decipheriv, createSign, createVerify, generateKeyPairSync, generateKeySync, createSecretKey, getCipherInfo, constants, webcrypto, subtle, CryptoKey, Hash, Hmac };
 export default crypto;

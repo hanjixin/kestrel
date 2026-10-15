@@ -10,6 +10,8 @@ mod resolve;
 mod transpile;
 #[path = "src/esm2cjs.rs"]
 mod esm2cjs;
+#[path = "src/procimpl.rs"]
+mod procimpl;
 
 /// Snapshot-time stub; the real client lives in src/fetchimpl.rs.
 #[allow(dead_code)]

@@ -29,27 +29,34 @@ export const mkdtemp = p("mkdtempSync");
 export const truncate = p("truncateSync");
 export const opendir = p("opendirSync");
 export const constants = { F_OK: 0, R_OK: 4, W_OK: 2, X_OK: 1, COPYFILE_EXCL: 1, COPYFILE_FICLONE: 2, COPYFILE_FICLONE_FORCE: 4 };
-export async function open(path, flags = "r") {
-  // Minimal FileHandle: whole-file semantics.
-  const fh = {
-    fd: 3,
-    async readFile(opts) { return fs.readFileSync(path, opts); },
-    async writeFile(data, opts) { return fs.writeFileSync(path, data, { ...(typeof opts === "string" ? { encoding: opts } : opts), flag: flags }); },
-    async appendFile(data, opts) { return fs.appendFileSync(path, data, opts); },
-    async stat() { return fs.statSync(path); },
-    async close() {},
-    async truncate(len) { return fs.truncateSync(path, len); },
-    async read() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "FileHandle.read is not implemented yet"); },
-    async write(data) { fs.appendFileSync(path, data); return { bytesWritten: data.length, buffer: data }; },
-    createReadStream(opts) { return fs.createReadStream(path, opts); },
-    createWriteStream(opts) { return fs.createWriteStream(path, opts); },
-    [Symbol.asyncDispose]() { return this.close(); },
-  };
-  if (flags.startsWith("w")) fs.writeFileSync(path, "");
-  else if (flags.startsWith("r")) fs.statSync(path);
-  return fh;
+export class FileHandle {
+  constructor(fd, path) { this.fd = fd; this._path = path; }
+  async read(buffer, offset, length, position) {
+    if (buffer === undefined || (buffer && !ArrayBuffer.isView(buffer))) { const o = buffer || {}; buffer = o.buffer ?? globalThis.Buffer.alloc(16384); offset = o.offset ?? 0; length = o.length ?? buffer.byteLength - offset; position = o.position ?? null; }
+    const bytesRead = fs.readSync(this.fd, buffer, offset ?? 0, length ?? buffer.byteLength - (offset ?? 0), position ?? null);
+    return { bytesRead, buffer };
+  }
+  async write(data, ...rest) { const bytesWritten = fs.writeSync(this.fd, data, ...rest); return { bytesWritten, buffer: data }; }
+  async readFile(opts) { const data = fs.readFileSync(this.fd, opts); return data; }
+  async writeFile(data, opts) { fs.writeSync(this.fd, typeof data === "string" ? data : data, typeof opts === "string" ? undefined : undefined); }
+  async appendFile(data) { fs.writeSync(this.fd, data); }
+  async stat() { return fs.fstatSync(this.fd); }
+  async truncate(len) { fs.ftruncateSync(this.fd, len); }
+  async sync() { fs.fsyncSync(this.fd); }
+  async datasync() { fs.fsyncSync(this.fd); }
+  async close() { if (this.fd >= 0) { fs.closeSync(this.fd); this.fd = -1; } }
+  async chmod(mode) { if (this._path) fs.chmodSync(this._path, mode); }
+  async utimes(a, m) { if (this._path) fs.utimesSync(this._path, a, m); }
+  createReadStream(opts) { return fs.createReadStream(this._path, opts); }
+  createWriteStream(opts) { return fs.createWriteStream(this._path, opts); }
+  readLines() { const text = fs.readFileSync(this.fd, "utf8"); const lines = text.split(/\r?\n/); if (lines.at(-1) === "") lines.pop(); return { async *[Symbol.asyncIterator]() { yield* lines; } }; }
+  [Symbol.asyncDispose]() { return this.close(); }
+}
+export async function open(path, flags = "r", mode) {
+  const p = typeof path === "string" ? path : String(path);
+  return new FileHandle(fs.openSync(p, flags, mode), p);
 }
 export function watch() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.promises.watch is not implemented yet"); }
 export function glob() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.promises.glob is not implemented yet"); }
 
-export default { readFile, writeFile, appendFile, stat, lstat, readdir, mkdir, rm, rmdir, unlink, rename, copyFile, cp, realpath, readlink, symlink, access, chmod, chown, utimes, mkdtemp, truncate, opendir, open, watch, glob, constants };
+export default { readFile, writeFile, appendFile, stat, lstat, readdir, mkdir, rm, rmdir, unlink, rename, copyFile, cp, realpath, readlink, symlink, access, chmod, chown, utimes, mkdtemp, truncate, opendir, open, FileHandle, watch, glob, constants };

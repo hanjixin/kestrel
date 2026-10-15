@@ -249,6 +249,7 @@ function serve(options) {
     if (r instanceof Promise) { r.then((v) => send(id, v), onError(id)); return undefined; }
     if (!(r instanceof Response)) return ERR_TUPLE;
     const b = r[kBody];
+    if (typeof b === "string" && r.status === 200 && !r.hasHeaders && r._raw === undefined) return b;
     const hdrs = headersOf(r);
     if (b === null) return [r.status, hdrs, ""];
     if (typeof b === "string" || b instanceof Uint8Array) return [r.status, hdrs, b];

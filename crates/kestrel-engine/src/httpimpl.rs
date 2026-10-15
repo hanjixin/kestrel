@@ -33,9 +33,17 @@ struct IsolateInfo {
     context: v8::Global<v8::Context>,
     state: Rc<RefCell<OpState>>,
 }
+/// The request currently being handled synchronously by the trampoline. Lazy accessors
+/// (`url`, `method`, `headers`) look here first; it is moved into the pending table only
+/// when the handler goes async.
+struct Current {
+    id: u32,
+    parts: hyper::http::request::Parts,
+}
 thread_local! {
     static ISOLATE: RefCell<Option<IsolateInfo>> = const { RefCell::new(None) };
     static DIRECT: RefCell<Option<Rc<Direct>>> = const { RefCell::new(None) };
+    static CURRENT: RefCell<Option<Current>> = const { RefCell::new(None) };
 }
 
 /// Called by the runtime right after it creates the isolate on this thread.
@@ -72,6 +80,10 @@ unsafe fn call_js(d: &Direct, id: u32) -> Option<Outgoing> {
     let arg: v8::Local<v8::Value> = v8::Number::new(scope, id as f64).into();
     let err = || Outgoing { status: 500, headers: String::new(), body: Bytes::from_static(b"Internal Server Error") };
     let Some(r) = f.call(scope, recv, &[arg]) else { return Some(err()) };
+    if r.is_string() {
+        // Fast path: 200 text/plain with a string body.
+        return Some(Outgoing { status: 200, headers: String::new(), body: Bytes::from(r.to_rust_string_lossy(scope)) });
+    }
     if !r.is_array() {
         // Promise-returning handler: give already-settled promises a chance to run now.
         scope.perform_microtask_checkpoint();
@@ -315,34 +327,40 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
                                         let hs = state_mut(&mut st);
                                         let id = hs.next_req;
                                         hs.next_req = hs.next_req.wrapping_add(1);
-                                        hs.pending.insert(id, Pending { parts, body: Some(body), respond: None, early: None, answered: false, t0 });
                                         id
                                     };
+                                    // Body stays with the task until the handler goes async.
+                                    let mut body = Some(body);
+                                    CURRENT.with(|c| *c.borrow_mut() = Some(Current { id, parts }));
                                     // SAFETY: see call_js.
-                                    match unsafe { call_js(&d, id) } {
+                                    let r = unsafe { call_js(&d, id) };
+                                    let cur = CURRENT.with(|c| c.borrow_mut().take());
+                                    match r {
                                         Some(out) => {
-                                            let mut st = d.state.borrow_mut();
-                                            let hs = state_mut(&mut st);
-                                            if let Some(p) = hs.pending.remove(&id) {
-                                                if let Some(t0) = p.t0 {
-                                                    let us = t0.elapsed().as_micros() as u32;
-                                                    STATS.with(|s| { if let Some(st) = s.borrow_mut().as_mut() { st.lat_us.push(us); st.reqs += 1; st.batches += 1; } });
-                                                }
+                                            if let Some(t0) = t0 {
+                                                let us = t0.elapsed().as_micros() as u32;
+                                                STATS.with(|s| { if let Some(st) = s.borrow_mut().as_mut() { st.lat_us.push(us); st.reqs += 1; st.batches += 1; } });
                                             }
                                             Step::Done(out)
                                         }
                                         None => {
-                                            // Handler went async: now we need a completion channel.
+                                            // Handler went async: park the request and arm a completion channel.
                                             let (rtx, rrx) = oneshot::channel();
                                             let mut st = d.state.borrow_mut();
                                             let hs = state_mut(&mut st);
                                             match hs.pending.get_mut(&id) {
+                                                // The handler already answered (or consumed the body) during the
+                                                // microtask checkpoint: the slot was created by that op.
                                                 Some(p) => {
+                                                    if p.body.is_none() { p.body = body.take(); }
                                                     if let Some(out) = p.early.take() { hs.pending.remove(&id); Step::Done(out) }
                                                     else { p.respond = Some(rtx); Step::Pending(rrx) }
                                                 }
-                                                // Already answered through the respond op during the microtask checkpoint.
-                                                None => Step::Pending(rrx),
+                                                None => {
+                                                    let parts = cur.map(|c| c.parts).unwrap_or_else(|| { let (p, _) = Request::new(()).into_parts(); p });
+                                                    hs.pending.insert(id, Pending { parts, body: body.take(), respond: Some(rtx), early: None, answered: false, t0 });
+                                                    Step::Pending(rrx)
+                                                }
                                             }
                                         }
                                     }
@@ -432,18 +450,35 @@ pub async fn accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Vec<u32>, J
     Ok(ids)
 }
 
-pub fn method(state: &mut OpState, id: u32) -> String {
+fn with_parts<R>(state: &mut OpState, id: u32, f: impl FnOnce(&hyper::http::request::Parts) -> R) -> Option<R> {
+    let mut f = Some(f);
+    if let Some(r) = CURRENT.with(|c| c.borrow().as_ref().filter(|c| c.id == id).map(|c| (f.take().unwrap())(&c.parts))) {
+        return Some(r);
+    }
     let hs = state_mut(state);
-    hs.pending.get(&id).map(|p| p.parts.method.as_str().to_string()).unwrap_or_default()
+    hs.pending.get(&id).map(|p| (f.take().unwrap())(&p.parts))
+}
+
+/// Move the synchronously-handled request into the pending table (called by ops that need a
+/// durable slot while the trampoline is still on the stack).
+fn park_current(hs: &mut HttpState, id: u32) {
+    let cur = CURRENT.with(|c| { let mut c = c.borrow_mut(); if c.as_ref().is_some_and(|c| c.id == id) { c.take() } else { None } });
+    if let Some(c) = cur {
+        hs.pending.entry(id).or_insert(Pending { parts: c.parts, body: None, respond: None, early: None, answered: false, t0: None });
+    }
+}
+
+pub fn method(state: &mut OpState, id: u32) -> String {
+    with_parts(state, id, |p| p.method.as_str().to_string()).unwrap_or_default()
 }
 
 pub fn url(state: &mut OpState, id: u32) -> String {
-    let hs = state_mut(state);
-    hs.pending.get(&id).map(|p| p.parts.uri.to_string()).unwrap_or_default()
+    with_parts(state, id, |p| p.uri.to_string()).unwrap_or_default()
 }
 
 pub fn respond(state: &mut OpState, id: u32, status: u16, headers: &str, body: Bytes) -> Result<(), JsErrorBox> {
     let hs = state_mut(state);
+    park_current(hs, id);
     let p = hs.pending.get_mut(&id).ok_or_else(|| JsErrorBox::type_error("response already sent"))?;
     if p.answered {
         return Err(JsErrorBox::type_error("response already sent"));
@@ -467,11 +502,20 @@ pub fn respond(state: &mut OpState, id: u32, status: u16, headers: &str, body: B
 
 /// Read the whole request body. The pending slot is freed once both body and response are done.
 pub async fn body(state: Rc<RefCell<OpState>>, id: u32) -> Result<Vec<u8>, JsErrorBox> {
-    let body = {
-        let mut st = state.borrow_mut();
-        let hs = state_mut(&mut st);
-        let p = hs.pending.get_mut(&id).ok_or_else(|| JsErrorBox::type_error("request body already consumed"))?;
-        p.body.take()
+    // If the handler asks for the body while the trampoline is still running, the body is
+    // still owned by the hyper task; the task hands it over once the handler goes async.
+    // We therefore wait (yielding) until the slot has a body or the task has finished.
+    let body = loop {
+        {
+            let mut st = state.borrow_mut();
+            let hs = state_mut(&mut st);
+            park_current(hs, id);
+            let p = hs.pending.get_mut(&id).ok_or_else(|| JsErrorBox::type_error("request body already consumed"))?;
+            if let Some(b) = p.body.take() { break Some(b); }
+            if p.answered { break None; }
+        }
+        BODY_WAIT.with(|w| w.set(true));
+        tokio::task::yield_now().await;
     };
     let out = match body {
         Some(b) => {
@@ -494,17 +538,19 @@ pub async fn body(state: Rc<RefCell<OpState>>, id: u32) -> Result<Vec<u8>, JsErr
 
 /// Headers of a pending request as "k\0v\0k\0v…".
 pub fn headers(state: &mut OpState, id: u32) -> String {
-    let hs = state_mut(state);
-    let Some(p) = hs.pending.get(&id) else { return String::new() };
-    let mut out = String::new();
-    for (k, v) in p.parts.headers.iter() {
-        out.push_str(k.as_str());
-        out.push('\0');
-        out.push_str(v.to_str().unwrap_or(""));
-        out.push('\0');
-    }
-    out
+    with_parts(state, id, |p| {
+        let mut out = String::new();
+        for (k, v) in p.headers.iter() {
+            out.push_str(k.as_str());
+            out.push('\0');
+            out.push_str(v.to_str().unwrap_or(""));
+            out.push('\0');
+        }
+        out
+    })
+    .unwrap_or_default()
 }
+thread_local! { static BODY_WAIT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
 
 // ---------- worker threads ----------
 

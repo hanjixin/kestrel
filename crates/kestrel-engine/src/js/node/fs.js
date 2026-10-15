@@ -39,7 +39,12 @@ export class Dirent {
 // ---------- sync ----------
 export function readFileSync(path, opts) {
   const enc = encOf(opts);
-  if (typeof path === "number") { if (path === 0) { const b = ops.op_k_read_stdin_all(); return enc ? Buffer.from(b).toString(enc) : Buffer.from(b); } throw nodeError("EBADF", "bad file descriptor"); }
+  if (typeof path === "number") {
+    if (path === 0) { const b = ops.op_k_read_stdin_all(); return enc ? Buffer.from(b).toString(enc) : Buffer.from(b); }
+    const chunks = []; const buf = Buffer.alloc(65536);
+    for (;;) { const n = readSync(path, buf, 0, buf.length, null); if (n === 0) break; chunks.push(Buffer.from(buf.subarray(0, n))); }
+    const all = Buffer.concat(chunks); return enc ? all.toString(enc) : all;
+  }
   const p = toPathString(path);
   if (enc === "utf8" || enc === "utf-8") return wrap(() => ops.op_k_fs_read_text(p), path);
   const bytes = wrap(() => ops.op_k_fs_read_bytes(p), path);
@@ -71,7 +76,6 @@ export function appendFileSync(path, data, opts) {
 export function existsSync(path) { try { return ops.op_k_fs_exists(toPathString(path)); } catch { return false; } }
 export function statSync(path, opts) { const p = toPathString(path); try { return new Stats(ops.op_k_fs_stat(p, true)); } catch (e) { if (opts && opts.throwIfNoEntry === false && /^ENOENT/.test(e.message)) return undefined; throw fsError(e, path); } }
 export function lstatSync(path, opts) { const p = toPathString(path); try { return new Stats(ops.op_k_fs_stat(p, false)); } catch (e) { if (opts && opts.throwIfNoEntry === false && /^ENOENT/.test(e.message)) return undefined; throw fsError(e, path); } }
-export function fstatSync() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.fstat is not implemented"); }
 export function readdirSync(path, opts) {
   const p = toPathString(path);
   const entries = wrap(() => ops.op_k_fs_readdir(p), path);
@@ -116,11 +120,27 @@ export function chownSync() {}
 export function utimesSync(path, atime, mtime) { const t = (x) => x instanceof Date ? x.getTime() : typeof x === "number" ? x * 1000 : Date.now(); wrap(() => ops.op_k_fs_utimes(toPathString(path), t(atime), t(mtime)), path); }
 export function mkdtempSync(prefix) { return wrap(() => ops.op_k_fs_mkdtemp(toPathString(prefix)), prefix); }
 export function truncateSync(path, len = 0) { const b = readFileSync(path); writeFileSync(path, b.subarray(0, len)); }
-export function openSync() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.open with file descriptors is not implemented yet; use readFileSync/writeFileSync"); }
-export function closeSync() {}
-export function readSync() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.read is not implemented yet"); }
-export function writeSync(fd, data) { if (fd === 1 || fd === 2) { ops.op_k_write_fd(fd, dataToBytes(data)); return data.length; } throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.write to arbitrary fds is not implemented yet"); }
-export function fsyncSync() {}
+const flagStr = (f) => (f === undefined || f === null ? "r" : typeof f === "number" ? ({ 0: "r", 1: "w", 2: "r+", 1537: "w", 577: "w", 1089: "a", 1090: "a+", 66: "r+" }[f] ?? "r") : String(f));
+export function openSync(path, flags, mode) { return wrap(() => ops.op_fd_open(toPathString(path), flagStr(flags), typeof mode === "number" ? mode : 0o666), path); }
+export function closeSync(fd) { wrap(() => ops.op_fd_close(fd | 0)); }
+export function readSync(fd, buffer, offset, length, position) {
+  if (offset !== null && typeof offset === "object") { ({ offset = 0, length, position } = offset); }
+  offset = offset ?? 0; length = length ?? buffer.byteLength - offset;
+  const view = new Uint8Array(buffer.buffer, buffer.byteOffset + offset, length);
+  return wrap(() => ops.op_fd_read(fd | 0, view, position === null || position === undefined ? -1 : Number(position)));
+}
+export function writeSync(fd, data, offsetOrPos, lengthOrEnc, position) {
+  let bytes;
+  if (typeof data === "string") { bytes = Buffer.from(data, typeof lengthOrEnc === "string" ? lengthOrEnc : "utf8"); position = typeof offsetOrPos === "number" ? offsetOrPos : null; }
+  else { const offset = typeof offsetOrPos === "number" ? offsetOrPos : 0; const len = typeof lengthOrEnc === "number" ? lengthOrEnc : data.byteLength - offset; bytes = new Uint8Array(data.buffer, data.byteOffset + offset, len); }
+  return wrap(() => ops.op_fd_write(fd | 0, bytes, position === null || position === undefined ? -1 : Number(position)));
+}
+export function fstatSync(fd) { return new Stats(wrap(() => ops.op_fd_stat(fd | 0))); }
+export function fsyncSync(fd) { wrap(() => ops.op_fd_sync(fd | 0)); }
+export function fdatasyncSync(fd) { fsyncSync(fd); }
+export function ftruncateSync(fd, len = 0) { wrap(() => ops.op_fd_truncate(fd | 0, len)); }
+export function readvSync(fd, buffers, position) { let n = 0; for (const b of buffers) { const r = readSync(fd, b, 0, b.byteLength, position === undefined ? null : position + n); n += r; if (r < b.byteLength) break; } return n; }
+export function writevSync(fd, buffers, position) { let n = 0; for (const b of buffers) n += writeSync(fd, b, 0, b.byteLength, position === undefined ? null : position + n); return n; }
 export function opendirSync(path) { const entries = readdirSync(path, { withFileTypes: true }); let i = 0; return { path: toPathString(path), readSync: () => entries[i++] ?? null, read: (cb) => { const e = entries[i++] ?? null; if (cb) queueMicrotask(() => cb(null, e)); return Promise.resolve(e); }, closeSync() {}, close: (cb) => { if (cb) cb(null); return Promise.resolve(); }, async *[Symbol.asyncIterator]() { for (const e of entries) yield e; } }; }
 export function watch() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.watch is not implemented yet"); }
 export function watchFile() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "fs.watchFile is not implemented yet"); }
@@ -162,6 +182,25 @@ export const mkdtemp = cbify(mkdtempSync);
 export const truncate = cbify(truncateSync);
 export const open = cbify(openSync);
 export const close = cbify(closeSync);
+export const fstat = cbify(fstatSync);
+export const fsync = cbify(fsyncSync);
+export const fdatasync = cbify(fdatasyncSync);
+export const ftruncate = cbify(ftruncateSync);
+export function read(fd, buffer, offset, length, position, cb) {
+  if (typeof buffer === "function") { cb = buffer; buffer = Buffer.alloc(16384); offset = 0; length = buffer.length; position = null; }
+  else if (typeof offset === "function") { cb = offset; const o = buffer && !ArrayBuffer.isView(buffer) ? buffer : {}; if (!ArrayBuffer.isView(buffer)) buffer = o.buffer ?? Buffer.alloc(16384); offset = o.offset ?? 0; length = o.length ?? buffer.length - offset; position = o.position ?? null; }
+  else if (typeof length === "function") { cb = length; length = buffer.length - offset; position = null; }
+  else if (typeof position === "function") { cb = position; position = null; }
+  let n, err = null; try { n = readSync(fd, buffer, offset, length, position); } catch (e) { err = e; }
+  queueMicrotask(() => (err ? cb(err) : cb(null, n, buffer)));
+}
+export function write(fd, data, ...rest) {
+  const cb = rest.pop();
+  let n, err = null; try { n = writeSync(fd, data, ...rest); } catch (e) { err = e; }
+  queueMicrotask(() => (err ? cb(err) : cb(null, n, data)));
+}
+export const readv = (fd, buffers, position, cb) => { if (typeof position === "function") { cb = position; position = undefined; } let n, err = null; try { n = readvSync(fd, buffers, position); } catch (e) { err = e; } queueMicrotask(() => (err ? cb(err) : cb(null, n, buffers))); };
+export const writev = (fd, buffers, position, cb) => { if (typeof position === "function") { cb = position; position = undefined; } let n, err = null; try { n = writevSync(fd, buffers, position); } catch (e) { err = e; } queueMicrotask(() => (err ? cb(err) : cb(null, n, buffers))); };
 export const opendir = cbify(opendirSync);
 export function exists(path, cb) { const r = existsSync(path); queueMicrotask(() => cb(r)); }
 exists[Symbol.for("nodejs.util.promisify.custom")] = (p) => Promise.resolve(existsSync(p));
@@ -209,8 +248,8 @@ export { promises };
 const fs = {
   constants, F_OK, R_OK, W_OK, X_OK, Stats, Dirent, promises,
   readFileSync, writeFileSync, appendFileSync, existsSync, statSync, lstatSync, fstatSync, readdirSync, mkdirSync, rmSync, rmdirSync, unlinkSync, renameSync,
-  copyFileSync, cpSync, realpathSync, readlinkSync, symlinkSync, accessSync, chmodSync, chownSync, utimesSync, mkdtempSync, truncateSync, openSync, closeSync, readSync, writeSync, fsyncSync, opendirSync, watch, watchFile, unwatchFile, globSync,
-  readFile, writeFile, appendFile, stat, lstat, readdir, mkdir, rm, rmdir, unlink, rename, copyFile, cp, realpath, readlink, symlink, access, chmod, chown, utimes, mkdtemp, truncate, open, close, opendir, exists,
+  copyFileSync, cpSync, realpathSync, readlinkSync, symlinkSync, accessSync, chmodSync, chownSync, utimesSync, mkdtempSync, truncateSync, openSync, closeSync, readSync, writeSync, fsyncSync, fdatasyncSync, ftruncateSync, readvSync, writevSync, opendirSync, watch, watchFile, unwatchFile, globSync,
+  readFile, writeFile, appendFile, stat, lstat, fstat, readdir, mkdir, rm, rmdir, unlink, rename, copyFile, cp, realpath, readlink, symlink, access, chmod, chown, utimes, mkdtemp, truncate, open, close, read, write, readv, writev, fsync, fdatasync, ftruncate, opendir, exists,
   createReadStream, createWriteStream, ReadStream, WriteStream, FSWatcher,
 };
 export default fs;

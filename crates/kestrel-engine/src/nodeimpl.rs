@@ -106,11 +106,7 @@ fn ms(t: std::io::Result<std::time::SystemTime>) -> f64 {
         .unwrap_or(0.0)
 }
 
-#[op2]
-#[serde]
-pub fn op_k_fs_stat(#[string] path: &str, follow: bool) -> Result<StatInfo, JsErrorBox> {
-    let md = if follow { std::fs::metadata(path) } else { std::fs::symlink_metadata(path) };
-    let md = md.map_err(|e| io_err(&e, if follow { "stat" } else { "lstat" }, path))?;
+pub fn stat_from_metadata(md: &std::fs::Metadata) -> StatInfo {
     #[cfg(unix)]
     let (mode, ino, nlink, uid, gid, dev) = {
         use std::os::unix::fs::MetadataExt;
@@ -118,7 +114,7 @@ pub fn op_k_fs_stat(#[string] path: &str, follow: bool) -> Result<StatInfo, JsEr
     };
     #[cfg(not(unix))]
     let (mode, ino, nlink, uid, gid, dev) = (0u32, 0.0, 1.0, 0u32, 0u32, 0.0);
-    Ok(StatInfo {
+    StatInfo {
         is_file: md.is_file(),
         is_dir: md.is_dir(),
         is_symlink: md.file_type().is_symlink(),
@@ -133,7 +129,15 @@ pub fn op_k_fs_stat(#[string] path: &str, follow: bool) -> Result<StatInfo, JsEr
         uid,
         gid,
         dev,
-    })
+    }
+}
+
+#[op2]
+#[serde]
+pub fn op_k_fs_stat(#[string] path: &str, follow: bool) -> Result<StatInfo, JsErrorBox> {
+    let md = if follow { std::fs::metadata(path) } else { std::fs::symlink_metadata(path) };
+    let md = md.map_err(|e| io_err(&e, if follow { "stat" } else { "lstat" }, path))?;
+    Ok(stat_from_metadata(&md))
 }
 
 #[op2(fast)]

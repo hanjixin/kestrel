@@ -66,3 +66,17 @@ pipeline(Readable.from(["ab", "cd", "ef"]), upper, new (require("stream").Writab
   try { assert.strictEqual(1, 2); } catch (e) { log(e.code, e.name); }
   console.log(out.join("\n"));
 });
+// --- appended: kdf / ciphers / brotli (compared with node) ---
+{
+  const crypto = require("crypto"), zlib = require("zlib");
+  const key = crypto.pbkdf2Sync("pw", "salt", 1000, 32, "sha256");
+  const iv = Buffer.alloc(12, 7);
+  const c = crypto.createCipheriv("aes-256-gcm", key, iv); c.setAAD(Buffer.from("aad"));
+  const ct = Buffer.concat([c.update("secret message"), c.final()]); const tag = c.getAuthTag();
+  const d = crypto.createDecipheriv("aes-256-gcm", key, iv); d.setAAD(Buffer.from("aad")); d.setAuthTag(tag);
+  const pt = Buffer.concat([d.update(ct), d.final()]).toString();
+  const cbc = crypto.createCipheriv("aes-128-cbc", key.subarray(0, 16), Buffer.alloc(16, 1));
+  const cbcCt = Buffer.concat([cbc.update("abc"), cbc.final()]).toString("hex");
+  const br = zlib.brotliCompressSync("brotli brotli brotli");
+  console.log(JSON.stringify([key.toString("hex"), ct.toString("hex"), tag.toString("hex"), pt, cbcCt, crypto.scryptSync("pw", "salt", 16, { N: 1024 }).toString("hex"), Buffer.from(crypto.hkdfSync("sha256", "ikm", "salt", "info", 16)).toString("hex"), zlib.brotliDecompressSync(br).toString(), br.length < 20]));
+}
