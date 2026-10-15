@@ -72,9 +72,12 @@ function requireFrom(referrer) {
   return req;
 }
 
+let requireLog = null; // resolved lazily: env is not available at snapshot time
 function loadFile(filename, parentFilename) {
   const cached = cache[filename];
   if (cached) return cached.exports;
+  if (requireLog === null) requireLog = !!globalThis.process.env.KESTREL_REQUIRE_LOG;
+  if (requireLog) Deno.core.print("[require] " + filename + "\n", true);
   const module = new Module(filename, cache[parentFilename] || null);
   module.filename = filename;
   module.paths = Module._nodeModulePaths(dirname(filename));
@@ -95,6 +98,8 @@ function loadInto(module, filename) {
   if (filename.endsWith(".node")) throw nodeError("ERR_DLOPEN_FAILED", "Native addons (.node) are not supported: " + filename);
   let src = ops.op_k_fs_read_text(filename);
   if (/\.(ts|cts|mts|tsx)$/.test(filename)) src = ops.op_k_transpile(filename, src);
+  // require(esm): rewrite ES module syntax to CommonJS on the fly (like Node 22).
+  if (ops.op_k_module_format(filename, src) === "esm") src = ops.op_k_esm_to_cjs(filename, src);
   compileAndRun(module, src, filename);
   module.loaded = true;
 }

@@ -1,17 +1,15 @@
 // node:events
 const kCapture = Symbol("kCapture");
 
-export class EventEmitter {
+// A plain function constructor (not a class) so legacy `EventEmitter.call(this)` +
+// `util.inherits` code keeps working, exactly like Node.
+export function EventEmitter(opts) {
+  EventEmitter.init.call(this, opts);
+}
+class EventEmitterImpl {
   static defaultMaxListeners = 10;
   static captureRejectionSymbol = Symbol.for("nodejs.rejection");
   static errorMonitor = Symbol("events.errorMonitor");
-
-  constructor(opts) {
-    this._events = Object.create(null);
-    this._eventsCount = 0;
-    this._maxListeners = undefined;
-    this[kCapture] = !!(opts && opts.captureRejections);
-  }
 
   setMaxListeners(n) { this._maxListeners = n; return this; }
   getMaxListeners() { return this._maxListeners === undefined ? EventEmitter.defaultMaxListeners : this._maxListeners; }
@@ -195,11 +193,22 @@ function _listeners(target, type, unwrap) {
   return unwrap ? l.map((x) => x.listener || x) : l.slice();
 }
 
+// Move the class prototype/statics onto the function constructor.
+EventEmitter.prototype = EventEmitterImpl.prototype;
+Object.defineProperty(EventEmitter.prototype, "constructor", { value: EventEmitter, writable: true, configurable: true });
+for (const k of Object.getOwnPropertyNames(EventEmitterImpl)) {
+  if (k === "prototype" || k === "length" || k === "name") continue;
+  Object.defineProperty(EventEmitter, k, Object.getOwnPropertyDescriptor(EventEmitterImpl, k));
+}
 EventEmitter.EventEmitter = EventEmitter;
 EventEmitter.prototype._events = undefined;
 EventEmitter.prototype._eventsCount = 0;
 EventEmitter.prototype._maxListeners = undefined;
-EventEmitter.init = function () { this._events = Object.create(null); this._eventsCount = 0; };
+EventEmitter.init = function (opts) {
+  if (this._events === undefined || this._events === Object.getPrototypeOf(this)._events) { this._events = Object.create(null); this._eventsCount = 0; }
+  this._maxListeners = this._maxListeners || undefined;
+  this[kCapture] = !!(opts && opts.captureRejections);
+};
 
 export const once = EventEmitter.once;
 export const on = EventEmitter.on;

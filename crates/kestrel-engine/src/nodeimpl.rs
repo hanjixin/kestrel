@@ -670,6 +670,23 @@ pub fn op_k_transpile(#[string] path: &str, #[string] src: &str) -> Result<Strin
     super::transpile::transpile(Path::new(path), src).map_err(|e| JsErrorBox::new("SyntaxError", e.to_string()))
 }
 
+/// "esm" | "cjs" | "json" for a file about to be `require`d.
+#[op2]
+#[string]
+pub fn op_k_module_format(#[string] path: &str, #[string] src: &str) -> String {
+    match super::resolve::format_of(Path::new(path)) {
+        super::resolve::Format::Json => "json".into(),
+        super::resolve::Format::Esm => "esm".into(),
+        super::resolve::Format::Cjs => if super::resolve::looks_like_esm(src) { "esm".into() } else { "cjs".into() },
+    }
+}
+
+#[op2]
+#[string]
+pub fn op_k_esm_to_cjs(#[string] path: &str, #[string] src: &str) -> Result<String, JsErrorBox> {
+    super::esm2cjs::esm_to_cjs(Path::new(path), src).map_err(|e| JsErrorBox::new("SyntaxError", e.to_string()))
+}
+
 #[op2(fast)]
 pub fn op_k_is_builtin(#[string] spec: &str) -> bool {
     super::resolve::builtin_name(spec).is_some()

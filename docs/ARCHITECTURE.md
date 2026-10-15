@@ -17,7 +17,16 @@ This is the same bet a JIT makes, moved to load time. The difference from V8's o
 - `loader.rs` resolves `file://` ESM with extension probing and strips TS/JSX via `transpile.rs` (`oxc_parser` → `oxc_semantic` → `oxc_transformer` → `oxc_codegen`, type erasure only).
 - Bootstrap provides `console` (Node-style inspection), timers on deno_core's timer wheel, `performance`, a minimal `process`, `Headers`/`Request`/`Response`, and `Kestrel.serve`.
 
-Not yet present: `node:*` built-ins, CommonJS, `node_modules` resolution, `fetch`, streams, workers API, `fs`. These are the compatibility backlog and are pure engineering; none conflicts with the design.
+### Node compatibility layer
+
+- **Resolution** (`resolve.rs`, shared by the ESM loader and `require`): builtins, relative/absolute paths with extension probing, directories via `package.json`, bare specifiers by walking `node_modules` with `exports` (conditions `node`/`import`|`require`/`default`, subpath patterns) then `module`/`main`. Resolved files are canonicalised so symlinked packages and `./a/../a` spellings share one cache entry.
+- **Formats**: `.mjs`/`.cjs` by extension, `.js` by the nearest `package.json` `type`, with an ESM-syntax sniff for loose files. ESM imports a CommonJS file through a generated shim (`default` = `module.exports`, named exports detected by a small lexer). `require()` of an ES module rewrites it to CommonJS with `esm2cjs.rs` (imports → `require`, exports → live getters, `import.meta` → object), matching Node 22's `require(esm)`.
+- **Builtins** are ES modules in the snapshot (`src/js/node/*.js`). User code resolves `node:fs` to the `node:fs` specifier and `load()` emits `export * from "ext:kestrel/node/fs.js"`, because deno_core refuses `ext:` imports from user modules. `require("fs")` gets the same module object through a registry filled by the bootstrap.
+- **Globals** (`globals.js`, evaluated before any builtin): `process` (argv/env/exit/nextTick/hrtime/stdio/...), `console`, timers (`setImmediate` and `nextTick` ride deno_core's own queues, so ordering matches Node), `performance`, `TextEncoder`/`TextDecoder`, `URL`, `Event`/`EventTarget`/`AbortController`, `structuredClone`; then `Buffer`, `fetch`/`Headers`/`Request`/`Response`/`FormData`, `crypto`, `require`.
+- **Snapshot rule**: anything computed while the bootstrap evaluates is frozen into the snapshot. Environment, TTY state, time origin, cwd and the worker id are therefore read lazily or filled in by `__kestrel_init` right before the main module runs.
+- **Legacy patterns**: `EventEmitter` and the stream classes are function constructors with prototype methods so `EventEmitter.call(this)` + `util.inherits` code works.
+
+Backlog: `child_process`, raw `net` sockets, `worker_threads.Worker`, fd-level `fs` and `fs.watch`, crypto ciphers/signatures, brotli, `https.createServer`, native addons. Each is engineering work on top of the existing ops layer.
 
 ## Tier 1: native tier (`kestrel-aot`)
 
@@ -58,13 +67,17 @@ Native code is reached through `#[op2(fast)]` ops `op_kestrel_call0..6` that ind
 - Requests cross into JS as `"id\0METHOD\0uri"` through an async op; headers are fetched lazily; the handler's `Response` goes back through a sync op into a oneshot. Handlers that return promises do not block the accept loop.
 - One blocking acceptor thread per bound address distributes connections round-robin to worker runtimes. macOS `SO_REUSEPORT` does not balance across sockets, which is why per-thread listeners were replaced with the hub. `workers: "auto"` spawns one isolate per core; `Kestrel.workerId` identifies them.
 
-Backlog: request bodies, response byte bodies and arbitrary headers, HTTP/2, TLS, `fetch` client, graceful shutdown.
+`http.createServer` is an adapter over the same backend (`IncomingMessage`/`ServerResponse` on top of the stream classes); `http.request`, `https.request` and `fetch` share a reqwest client with rustls.
+
+**Open performance issue (Linux):** with 64 connections one worker serves ~219 k req/s, with 256 connections ~123 k and p99 ~100 ms; macOS shows no such drop. The batching accept op and the acceptor hub were ruled out (keep-alive is honoured, accepts are rare); the suspect is wake-up amplification between hyper connection tasks and the deno_core event-loop future on Tokio's current-thread scheduler. `bench/linux_perf.sh` is the profiling harness (needs a privileged container).
+
+Backlog: HTTP/2, TLS termination, graceful shutdown, streaming bodies.
 
 ## Roadmap, in order of payoff
 
 1. **int32 lattice in the native tier.** Infer integer-ness of locals (int literal init, int-preserving updates with overflow checks that branch to a float clone of the loop). This is where V8 currently wins on integer loops and the remaining large CPU gap.
 2. **Typed arrays and `ArrayBuffer`** as raw pointers from V8 backing stores: zero-copy numeric kernels, the common case for real CPU-bound JS.
 3. **Objects with stable shapes** as structs, speculated from annotations (`interface`) and guarded at the boundary.
-4. **Node compatibility layer**: `node:` builtins, CJS, `node_modules` resolution, `fetch`. Reuse existing Rust implementations where licences allow.
+4. **Linux HTTP scaling**: fix the connection-count degradation, then validate thread-per-core on a multi-core Linux host with a separate load generator.
 5. **`kestrel build`**: emit a single binary with a V8 code cache plus the native tier linked in via `cranelift-object`.
 6. **Per-isolate native state** (stack limit, overflow flag, dispatch table) so the native tier is safe under worker threads; today those are process globals used from the JS thread only.

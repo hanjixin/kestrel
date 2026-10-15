@@ -142,6 +142,7 @@ deno_core::extension!(
         super::nodeimpl::op_k_setenv, super::nodeimpl::op_k_sleep_ms, super::nodeimpl::op_k_read_stdin_line,
         super::nodeimpl::op_k_read_stdin_all, super::nodeimpl::op_k_isatty, super::nodeimpl::op_k_write_fd,
         super::nodeimpl::op_k_resolve, super::nodeimpl::op_k_transpile, super::nodeimpl::op_k_is_builtin,
+        super::nodeimpl::op_k_module_format, super::nodeimpl::op_k_esm_to_cjs,
         op_kestrel_call0, op_kestrel_call1, op_kestrel_call2, op_kestrel_call3,
         op_kestrel_call4, op_kestrel_call5, op_kestrel_call6,
     ],

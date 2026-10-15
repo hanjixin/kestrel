@@ -164,8 +164,20 @@ fn split_bare(spec: &str) -> (&str, String) {
     (name, subpath)
 }
 
+/// Canonical form used as the module identity (Node resolves symlinks by default too).
+fn canonical(p: PathBuf) -> PathBuf {
+    std::fs::canonicalize(&p).unwrap_or(p)
+}
+
 /// Resolve `spec` as seen from the file `referrer` (a path; its parent is the base dir).
 pub fn resolve(spec: &str, referrer: &Path, kind: Kind) -> Result<Resolved, String> {
+    resolve_inner(spec, referrer, kind).map(|r| match r {
+        Resolved::File(p) => Resolved::File(canonical(p)),
+        b => b,
+    })
+}
+
+fn resolve_inner(spec: &str, referrer: &Path, kind: Kind) -> Result<Resolved, String> {
     if let Some(b) = builtin_name(spec) {
         return Ok(Resolved::Builtin(b.to_string()));
     }
