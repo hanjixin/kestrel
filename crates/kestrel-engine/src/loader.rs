@@ -74,7 +74,42 @@ impl ModuleLoader for KestrelModuleLoader {
             }
 
             let code = if transpile::needs_transpile(&path) {
-                transpile::transpile(&path, &code).map_err(|e| JsErrorBox::generic(e.to_string()))?
+                let aot_enabled = std::env::var("KESTREL_AOT").map(|v| v != "0").unwrap_or(true);
+                let log = std::env::var("KESTREL_AOT_LOG").is_ok();
+                if aot_enabled {
+                    let out = kestrel_aot::process(&path, &code).map_err(|e| JsErrorBox::generic(e.to_string()))?;
+                    if log {
+                        for c in &out.compiled {
+                            eprintln!("[aot] {}: compiled {}/{} -> native #{}", path.display(), c.name, c.arity, c.index);
+                        }
+                        for (n, why) in &out.rejected {
+                            eprintln!("[aot] {}: kept {} on V8: {}", path.display(), n, why);
+                        }
+                    }
+                    let js = transpile::transpile(&path, &out.source).map_err(|e| JsErrorBox::generic(e.to_string()))?;
+                    if out.compiled.is_empty() {
+                        js
+                    } else {
+                        let mut s = String::with_capacity(js.len() + out.prologue.len() + out.epilogue.len() + 2);
+                        // Keep a leading shebang on line 1.
+                        if js.starts_with("#!") {
+                            let nl = js.find('\n').unwrap_or(js.len());
+                            s.push_str(&js[..nl]);
+                            s.push('\n');
+                            s.push_str(&out.prologue);
+                            s.push_str(&js[nl..]);
+                        } else {
+                            s.push_str(&out.prologue);
+                            s.push('\n');
+                            s.push_str(&js);
+                        }
+                        s.push_str(&out.epilogue);
+                        s.push('\n');
+                        s
+                    }
+                } else {
+                    transpile::transpile(&path, &code).map_err(|e| JsErrorBox::generic(e.to_string()))?
+                }
             } else {
                 code
             };

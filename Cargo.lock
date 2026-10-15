@@ -1145,8 +1145,10 @@ dependencies = [
  "cranelift-native",
  "oxc_allocator",
  "oxc_ast",
+ "oxc_ast_visit",
  "oxc_parser",
  "oxc_span",
+ "oxc_syntax",
 ]
 
 [[package]]
@@ -1167,6 +1169,7 @@ dependencies = [
  "anyhow",
  "deno_core",
  "deno_error",
+ "kestrel-aot",
  "oxc_allocator",
  "oxc_codegen",
  "oxc_parser",

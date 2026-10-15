@@ -3,6 +3,19 @@
 #[path = "src/ops.rs"]
 mod ops;
 
+/// Stub for snapshot time; the real table lives in kestrel-aot.
+#[allow(dead_code)]
+mod bridge {
+    pub fn take_overflow() -> bool { false }
+    pub fn call0(_: u32) -> f64 { unreachable!() }
+    pub fn call1(_: u32, _: f64) -> f64 { unreachable!() }
+    pub fn call2(_: u32, _: f64, _: f64) -> f64 { unreachable!() }
+    pub fn call3(_: u32, _: f64, _: f64, _: f64) -> f64 { unreachable!() }
+    pub fn call4(_: u32, _: f64, _: f64, _: f64, _: f64) -> f64 { unreachable!() }
+    pub fn call5(_: u32, _: f64, _: f64, _: f64, _: f64, _: f64) -> f64 { unreachable!() }
+    pub fn call6(_: u32, _: f64, _: f64, _: f64, _: f64, _: f64, _: f64) -> f64 { unreachable!() }
+}
+
 fn main() {
     let out_dir = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
     let snapshot_path = out_dir.join("KESTREL_SNAPSHOT.bin");
