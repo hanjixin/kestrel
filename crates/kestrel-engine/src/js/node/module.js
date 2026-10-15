@@ -2,7 +2,7 @@
 import { ops, nodeError } from "ext:kestrel/internal.js";
 import { dirname } from "ext:kestrel/node/path.js";
 
-export const builtinModules = ["assert", "buffer", "child_process", "crypto", "events", "fs", "fs/promises", "module", "os", "path", "path/posix", "process", "querystring", "stream", "string_decoder", "timers", "timers/promises", "tty", "url", "util", "util/types", "worker_threads", "zlib", "http", "https", "net", "readline"];
+export const builtinModules = ["assert", "buffer", "child_process", "crypto", "events", "fs", "fs/promises", "module", "os", "path", "path/posix", "process", "querystring", "stream", "string_decoder", "timers", "timers/promises", "tty", "url", "util", "util/types", "worker_threads", "zlib", "http", "https", "net", "readline", "tls", "dns", "dns/promises"];
 export function isBuiltin(spec) { return ops.op_k_is_builtin(String(spec)); }
 
 const registry = new Map(); // builtin name -> module default export (set by bootstrap)

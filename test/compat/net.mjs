@@ -1,0 +1,28 @@
+import net from "node:net";
+import { once } from "node:events";
+const srv = net.createServer({ allowHalfOpen: false }, (sock) => {
+  sock.setEncoding("utf8");
+  sock.on("data", (d) => sock.write("echo:" + d));
+  sock.on("end", () => sock.end());
+});
+srv.listen(0, "127.0.0.1");
+await once(srv, "listening");
+const port = srv.address().port;
+const out = [];
+const c = net.connect(port, "127.0.0.1");
+await once(c, "connect");
+out.push(typeof c.localPort, c.remoteAddress, c.remotePort === port);
+c.write("hello");
+const [d1] = await once(c, "data");
+out.push(d1.toString());
+c.end("bye");
+let rest = "";
+c.on("data", (d) => (rest += d));
+await once(c, "close");
+out.push(rest);
+const bad = net.connect(1, "127.0.0.1");
+const [err] = await once(bad, "error");
+out.push(err.code);
+srv.close();
+await once(srv, "close");
+console.log(JSON.stringify(out));

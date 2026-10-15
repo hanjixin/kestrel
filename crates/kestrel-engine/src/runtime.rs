@@ -92,6 +92,32 @@ fn init_v8_once() {
     });
 }
 
+/// Like `run_file`, but publishes the isolate's thread-safe handle (so a parent thread can
+/// terminate a worker) before running the module.
+pub fn run_file_with_isolate_handle(path: &Path, argv: &[String], handle: std::sync::Arc<std::sync::Mutex<Option<deno_core::v8::IsolateHandle>>>) -> Result<i32> {
+    init_v8_once();
+    let _ = crate::httpimpl::MAIN.set((path.to_path_buf(), argv.to_vec()));
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .max_io_events_per_tick(8192)
+        .event_interval(255)
+        .build()?;
+    rt.block_on(async {
+        let mut r = Runtime::new();
+        *handle.lock().unwrap() = Some(r.js.v8_isolate().thread_safe_handle());
+        let code = r.run_main(path, argv).await;
+        match code {
+            Ok(c) => Ok(c),
+            // Termination requested by the parent (or worker-side exit): not an error to report.
+            Err(e) if e.to_string().contains("execution terminated") || e.to_string().contains("Uncaught (in promise) Error: execution terminated") => Ok(0),
+            Err(e) => {
+                eprintln!("{e}");
+                Ok(1)
+            }
+        }
+    })
+}
+
 pub fn run_file(path: &Path, argv: &[String]) -> Result<i32> {
     init_v8_once();
     let _ = crate::httpimpl::MAIN.set((path.to_path_buf(), argv.to_vec()));

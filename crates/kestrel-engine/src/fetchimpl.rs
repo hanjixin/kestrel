@@ -21,9 +21,11 @@ fn client(state: &Rc<RefCell<OpState>>) -> Result<reqwest::Client, JsErrorBox> {
     if let Some(c) = st.try_borrow::<reqwest::Client>() {
         return Ok(c.clone());
     }
+    let insecure = std::env::var("NODE_TLS_REJECT_UNAUTHORIZED").map(|v| v == "0").unwrap_or(false);
     let c = reqwest::Client::builder()
         .user_agent("kestrel/0.0.1")
         .redirect(reqwest::redirect::Policy::limited(20))
+        .danger_accept_invalid_certs(insecure)
         .build()
         .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
     st.put(c.clone());
@@ -49,8 +51,10 @@ pub async fn fetch(
     }
     if !follow_redirects {
         // Per-request policy isn't configurable on a shared client; build a one-off client.
+        let insecure = std::env::var("NODE_TLS_REJECT_UNAUTHORIZED").map(|v| v == "0").unwrap_or(false);
         let c = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
+            .danger_accept_invalid_certs(insecure)
             .build()
             .map_err(|e| JsErrorBox::type_error(e.to_string()))?;
         req = c.request(req.build().map_err(|e| JsErrorBox::type_error(e.to_string()))?.method().clone(), &url);

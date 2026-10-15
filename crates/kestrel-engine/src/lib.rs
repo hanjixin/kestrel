@@ -1,6 +1,7 @@
 pub mod esm2cjs;
 pub mod fetchimpl;
 pub mod httpimpl;
+pub mod netimpl;
 pub mod nodeimpl;
 pub mod procimpl;
 pub mod resolve;

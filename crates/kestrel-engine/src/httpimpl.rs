@@ -134,6 +134,11 @@ struct Pending {
     t0: Option<std::time::Instant>,
 }
 
+mod io_alias {
+    pub trait AsyncReadWriteUnpin: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send {}
+    impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> AsyncReadWriteUnpin for T {}
+}
+
 fn build_response(out: Outgoing) -> Response<Full<Bytes>> {
     let mut resp = Response::new(Full::new(out.body));
     *resp.status_mut() = hyper::StatusCode::from_u16(out.status).unwrap_or(hyper::StatusCode::INTERNAL_SERVER_ERROR);
@@ -300,11 +305,20 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
             }
             let Ok(stream) = tokio::net::TcpStream::from_std(std_stream) else { live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); continue };
             let tx = tx.clone();
+            let tls = crate::netimpl::TLS_ACCEPTOR.with(|t| t.borrow().clone());
             tokio::spawn(async move {
                 struct Dec(std::sync::Arc<std::sync::atomic::AtomicUsize>);
                 impl Drop for Dec { fn drop(&mut self) { self.0.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); } }
                 let _dec = Dec(live);
-                let io = TokioIo::new(stream);
+                // Plain TCP or TLS-terminated: both end up as a boxed AsyncRead+AsyncWrite.
+                let io: Box<dyn io_alias::AsyncReadWriteUnpin> = match tls {
+                    Some(acceptor) => match acceptor.accept(stream).await {
+                        Ok(s) => Box::new(s),
+                        Err(_) => return,
+                    },
+                    None => Box::new(stream),
+                };
+                let io = TokioIo::new(io);
                 let raw = raw_mode();
                 let svc = service_fn(move |req: Request<IncomingBody>| {
                     let tx = tx.clone();

@@ -10,6 +10,7 @@ export function request(input, options, cb) {
   return new ClientRequest({ ...(input || {}), protocol: (input && input.protocol) || "https:", _https: true }, options, cb);
 }
 export function get(input, options, cb) { const r = request(input, options, cb); r.end(); return r; }
-export function createServer() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "https.createServer is not implemented yet (terminate TLS in front of kestrel)"); }
-export class Server {}
+import { Server as HttpServer } from "ext:kestrel/node/http.js";
+export class Server extends HttpServer { constructor(opts, handler) { if (typeof opts === "function") { handler = opts; opts = {}; } super(opts, handler); } }
+export function createServer(opts, handler) { return new Server(opts, handler); }
 export default { Agent, globalAgent, request, get, createServer, Server, STATUS_CODES: http.STATUS_CODES, METHODS: http.METHODS };

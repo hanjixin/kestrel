@@ -12,6 +12,14 @@ mod transpile;
 mod esm2cjs;
 #[path = "src/procimpl.rs"]
 mod procimpl;
+#[path = "src/netimpl.rs"]
+mod netimpl;
+
+/// Snapshot-time stubs for things netimpl reaches into.
+#[allow(dead_code)]
+mod runtime {
+    pub fn run_file_with_isolate_handle(_: &std::path::Path, _: &[String], _: std::sync::Arc<std::sync::Mutex<Option<deno_core::v8::IsolateHandle>>>) -> anyhow::Result<i32> { unreachable!() }
+}
 
 /// Snapshot-time stub; the real client lives in src/fetchimpl.rs.
 #[allow(dead_code)]
@@ -28,6 +36,7 @@ mod httpimpl {
     use std::rc::Rc;
     use deno_core::OpState;
     use deno_error::JsErrorBox;
+    pub static MAIN: std::sync::OnceLock<(std::path::PathBuf, Vec<String>)> = std::sync::OnceLock::new();
     pub fn listen(_: &mut OpState, _: &str, _: u16, _: u32) -> Result<u32, JsErrorBox> { unreachable!() }
     pub async fn accept(_: Rc<RefCell<OpState>>, _: u32) -> Result<Vec<u32>, JsErrorBox> { unreachable!() }
     pub fn method(_: &mut OpState, _: u32) -> String { unreachable!() }

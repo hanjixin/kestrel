@@ -76,6 +76,7 @@ export class Server extends EventEmitter {
     if (typeof opts === "function") { handler = opts; opts = {}; }
     this.listening = false; this.timeout = 0; this.keepAliveTimeout = 5000; this.headersTimeout = 60000; this.requestTimeout = 300000; this.maxHeadersCount = null;
     if (handler) this.on("request", handler);
+    if (opts && (opts.key || opts.cert)) this._tls = { key: opts.key, cert: opts.cert };
   }
   listen(...args) {
     let port = 0, host, cb;
@@ -85,7 +86,7 @@ export class Server extends EventEmitter {
     const self = this;
     try {
       const info = globalThis.Kestrel.serve({
-        port, hostname: host || "0.0.0.0", workers: 1, silent: true,
+        port, hostname: host || "0.0.0.0", workers: 1, silent: true, tls: this._tls,
         fetch(request) {
           return new Promise((resolve) => {
             const id = request[Symbol.for("kestrel.reqId")];

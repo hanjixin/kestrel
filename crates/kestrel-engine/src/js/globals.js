@@ -281,7 +281,7 @@ const process = {
   argv: [], argv0: "kestrel", execArgv: [], env: {}, platform: "darwin", pid: 0, ppid: 0, arch: "arm64", execPath: "",
   release: { name: "node", lts: "Jod" }, config: { variables: {} }, features: { inspector: false, debug: false, uv: true, ipv6: true, tls: true, cached_builtins: true },
   get exitCode() { return exitCode; }, set exitCode(c) { exitCode = c; },
-  exit(code) { if (code !== undefined) exitCode = code; process.emit("exit", exitCode ?? 0); ops.op_kestrel_exit((exitCode ?? 0) | 0); },
+  exit(code) { if (code !== undefined) exitCode = code; process.emit("exit", exitCode ?? 0); if (ops.op_worker_self_exit((exitCode ?? 0) | 0)) { for (;;) {} } ops.op_kestrel_exit((exitCode ?? 0) | 0); },
   reallyExit(code) { ops.op_kestrel_exit((code ?? 0) | 0); },
   abort() { ops.op_kestrel_exit(134); },
   kill(pid, sig) { if (pid === process.pid) process.exit(sig === "SIGTERM" || sig === undefined ? 143 : 130); return true; },
@@ -327,6 +327,7 @@ globalThis.__kestrel_init = (argv, env, platform, pid) => {
 
 core.setUnhandledPromiseRejectionHandler((promise, reason) => {
   if (process.emit("unhandledRejection", reason, promise)) return true;
+  if (globalThis.__kestrel_worker_error) { globalThis.__kestrel_worker_error(reason); return true; }
   core.print((reason instanceof Error ? reason.stack || String(reason) : "Uncaught (in promise) " + inspect(reason)) + "\n", true);
   process.emit("exit", 1);
   ops.op_kestrel_exit(1);
@@ -334,6 +335,7 @@ core.setUnhandledPromiseRejectionHandler((promise, reason) => {
 });
 core.setReportExceptionCallback((e) => {
   if (process.emit("uncaughtException", e, "uncaughtException")) return;
+  if (globalThis.__kestrel_worker_error) { globalThis.__kestrel_worker_error(e); return; }
   core.print((e instanceof Error ? e.stack || String(e) : "Uncaught " + inspect(e)) + "\n", true);
   process.emit("exit", 1);
   ops.op_kestrel_exit(1);

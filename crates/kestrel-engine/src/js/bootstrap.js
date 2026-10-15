@@ -25,12 +25,21 @@ import tty from "ext:kestrel/node/tty.js";
 import url from "ext:kestrel/node/url.js";
 import util from "ext:kestrel/node/util.js";
 import utilTypes from "ext:kestrel/node/util_types.js";
-import worker_threads from "ext:kestrel/node/worker_threads.js";
+import worker_threads, { _refresh as refreshWorkerThreads } from "ext:kestrel/node/worker_threads.js";
 import zlib from "ext:kestrel/node/zlib.js";
+import tls from "ext:kestrel/node/tls.js";
+import dns from "ext:kestrel/node/dns.js";
+import dnsPromises from "ext:kestrel/node/dns_promises.js";
+
+{
+  const prevInit = globalThis.__kestrel_init;
+  globalThis.__kestrel_init = (...a) => { prevInit(...a); refreshWorkerThreads(); };
+}
 
 const builtins = {
   assert, "assert/strict": assert.strict, buffer, child_process, crypto, events, fs, "fs/promises": fsPromises, http, https, module, net, os, path, "path/posix": path,
   process: globalThis.process, querystring, readline, stream, "stream/promises": stream.promises, string_decoder, timers, "timers/promises": timersPromises, tty, url, util, "util/types": utilTypes, worker_threads, zlib,
+  tls, dns, "dns/promises": dnsPromises,
 };
 _registerBuiltins(builtins);
 globalThis[Symbol.for("kestrel.builtin")] = (name) => builtins[String(name).replace(/^node:/, "")];
@@ -222,6 +231,10 @@ function serve(options) {
   const workers = Math.max(1, Math.min(options.workers === "auto" || options.workers === undefined ? cpus : options.workers | 0, 256));
   if (workerId === 0 && workers > 1) ops.op_kestrel_spawn_workers(workers - 1);
 
+  if (options.tls) {
+    const load = (v) => (typeof v === "string" && !v.includes("-----BEGIN") ? fs.readFileSync(v, "utf8") : typeof v === "string" ? v : new TextDecoder().decode(v));
+    ops.op_tls_server_config(load(options.tls.cert), load(options.tls.key));
+  }
   const rid = ops.op_kestrel_http_listen(hostname, port, workers);
   const accept = ops.op_kestrel_http_accept;
   const respond = ops.op_kestrel_http_respond;
@@ -260,7 +273,7 @@ function serve(options) {
   // Keeps the event loop alive for the lifetime of the server (never resolves).
   accept(rid).catch(() => {});
   if (workerId === 0 && options.silent !== true) {
-    console.log(`Kestrel listening on http://${hostname}:${port} (${workers} worker${workers > 1 ? "s" : ""})`);
+    console.log(`Kestrel listening on ${options.tls ? "https" : "http"}://${hostname}:${port} (${workers} worker${workers > 1 ? "s" : ""})`);
   }
   return { port, hostname, workers };
 }
