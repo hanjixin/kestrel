@@ -18,12 +18,19 @@ pub struct Runtime {
 impl Runtime {
     pub fn new() -> Self {
         kestrel_aot::registry::init_thread();
-        let js = JsRuntime::new(RuntimeOptions {
+        let mut js = JsRuntime::new(RuntimeOptions {
             module_loader: Some(Rc::new(KestrelModuleLoader)),
             extensions: vec![ops::kestrel::init()],
             startup_snapshot: Some(SNAPSHOT),
             ..Default::default()
         });
+        // Let the HTTP backend call into this isolate directly from its tasks.
+        let context = js.main_context();
+        let state = js.op_state();
+        {
+            let iso: &deno_core::v8::Isolate = js.v8_isolate();
+            crate::httpimpl::init_thread_isolate(iso, context, state);
+        }
         Self { js }
     }
 
@@ -70,7 +77,22 @@ impl Default for Runtime {
 }
 
 /// Convenience: run a file to completion on a fresh current-thread Tokio runtime.
+static V8_INIT: std::sync::Once = std::sync::Once::new();
+
+/// Process-wide V8 setup. Every worker thread runs its own isolate, so GC must not be
+/// funnelled through V8's shared background worker pool. KESTREL_V8_FLAGS overrides.
+fn init_v8_once() {
+    V8_INIT.call_once(|| {
+        let flags = std::env::var("KESTREL_V8_FLAGS").unwrap_or_else(|_| "--single-threaded-gc --max-semi-space-size=32".to_string());
+        if !flags.trim().is_empty() {
+            deno_core::v8::V8::set_flags_from_string(&flags);
+        }
+        deno_core::JsRuntime::init_platform(None);
+    });
+}
+
 pub fn run_file(path: &Path, argv: &[String]) -> Result<i32> {
+    init_v8_once();
     let _ = crate::httpimpl::MAIN.set((path.to_path_buf(), argv.to_vec()));
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()

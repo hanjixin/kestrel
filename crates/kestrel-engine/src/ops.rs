@@ -45,16 +45,34 @@ call_op!(op_kestrel_call6, call6, a, b, c, d, e, f);
 use std::cell::RefCell;
 use std::rc::Rc;
 use deno_core::OpState;
+use deno_core::v8;
 
 #[op2(fast)]
-pub fn op_kestrel_http_listen(state: &mut OpState, #[string] host: &str, port: u16) -> Result<u32, deno_error::JsErrorBox> {
-    super::httpimpl::listen(state, host, port)
+pub fn op_kestrel_http_listen(state: &mut OpState, #[string] host: &str, port: u16, expected_workers: u32) -> Result<u32, deno_error::JsErrorBox> {
+    super::httpimpl::listen(state, host, port, expected_workers)
+}
+
+#[op2]
+#[buffer]
+pub async fn op_kestrel_http_accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Vec<u32>, deno_error::JsErrorBox> {
+    super::httpimpl::accept(state, rid).await
+}
+
+#[op2(fast)]
+pub fn op_kestrel_http_set_handler(scope: &mut v8::PinScope, state: Rc<RefCell<OpState>>, f: v8::Local<v8::Function>) {
+    super::httpimpl::set_handler(scope, state, f)
 }
 
 #[op2]
 #[string]
-pub async fn op_kestrel_http_accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<String, deno_error::JsErrorBox> {
-    super::httpimpl::accept(state, rid).await
+pub fn op_kestrel_http_method(state: &mut OpState, id: u32) -> String {
+    super::httpimpl::method(state, id)
+}
+
+#[op2]
+#[string]
+pub fn op_kestrel_http_url(state: &mut OpState, id: u32) -> String {
+    super::httpimpl::url(state, id)
 }
 
 #[op2(fast)]
@@ -125,7 +143,7 @@ deno_core::extension!(
     ops = [
         op_kestrel_exit, op_kestrel_cwd, op_kestrel_v8_version,
         op_kestrel_http_listen, op_kestrel_http_accept, op_kestrel_http_respond, op_kestrel_http_respond_bytes,
-        op_kestrel_http_body, op_kestrel_http_headers, op_kestrel_fetch,
+        op_kestrel_http_body, op_kestrel_http_headers, op_kestrel_http_method, op_kestrel_http_url, op_kestrel_http_set_handler, op_kestrel_fetch,
         op_kestrel_spawn_workers, op_kestrel_worker_id, op_kestrel_cpus,
         super::nodeimpl::op_k_fs_read_text, super::nodeimpl::op_k_fs_read_bytes, super::nodeimpl::op_k_fs_write_bytes,
         super::nodeimpl::op_k_fs_write_text, super::nodeimpl::op_k_fs_stat, super::nodeimpl::op_k_fs_exists,

@@ -69,7 +69,7 @@ Native code is reached through `#[op2(fast)]` ops `op_kestrel_call0..6` that ind
 
 `http.createServer` is an adapter over the same backend (`IncomingMessage`/`ServerResponse` on top of the stream classes); `http.request`, `https.request` and `fetch` share a reqwest client with rustls.
 
-**Open performance issue (Linux):** with 64 connections one worker serves ~219 k req/s, with 256 connections ~123 k and p99 ~100 ms; macOS shows no such drop. The batching accept op and the acceptor hub were ruled out (keep-alive is honoured, accepts are rare); the suspect is wake-up amplification between hyper connection tasks and the deno_core event-loop future on Tokio's current-thread scheduler. `bench/linux_perf.sh` is the profiling harness (needs a privileged container).
+**Measurement notes.** The Linux numbers first taken inside Docker Desktop's VM were invalid: `perf` showed 75 % of CPU in the kernel's page-fault and zram-swap paths (the 8 GB VM was swapping), which is what produced the apparent "throughput drops with connection count". Real Linux measurements are taken on the the test nodes (`bench/remote/`: 2 × 128-vCPU EPYC 7542; the inter-node link caps at ~57 k req/s, so servers and `wrk` share one node over loopback). `KESTREL_HTTP_RAW=1` makes hyper answer without entering JS and isolates the hand-off cost; `KESTREL_HTTP_STATS=1` prints batch sizes and in-server latency percentiles per worker; `KESTREL_HTTP_BATCH` caps requests per accept call.
 
 Backlog: HTTP/2, TLS termination, graceful shutdown, streaming bodies.
 

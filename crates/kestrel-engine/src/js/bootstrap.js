@@ -105,22 +105,27 @@ const BodyMixin = {
 };
 
 class Request {
-  #headers = null; #method;
-  constructor(input, init = kEmpty, id, method) {
-    if (input instanceof Request) { this.url = input.url; this.#method = input.method; this.#headers = new Headers(input.headers); this[kBody] = input[kBody]; this.signal = input.signal; this.redirect = input.redirect; }
-    else { this.url = String(input); this.#method = "GET"; this.redirect = "follow"; this.signal = null; }
-    if (method !== undefined) this.#method = method;
-    else if (init.method) this.#method = String(init.method).toUpperCase();
+  #headers = null;
+  // Server requests (id !== undefined) read url/method/headers from the native side on first access.
+  constructor(input, init = kEmpty, id) {
     this[kReqId] = id;
+    if (id !== undefined) { this[kBody] = undefined; return; }
+    if (input instanceof Request) { this._url = input.url; this._method = input.method; this.#headers = new Headers(input.headers); this[kBody] = input[kBody]; this.signal = input.signal; this.redirect = input.redirect; }
+    else { this._url = String(input); this._method = "GET"; }
+    if (init.method) this._method = String(init.method).toUpperCase();
     if (init.headers) this.#headers = new Headers(init.headers);
     if (init.body !== undefined) this[kBody] = bodyToBytes(init.body);
-    else if (id !== undefined) this[kBody] = undefined; // lazily read from the server
     else if (this[kBody] === undefined) this[kBody] = null;
     if (init.signal) this.signal = init.signal;
     if (init.redirect) this.redirect = init.redirect;
-    this.credentials = init.credentials || "same-origin"; this.mode = init.mode || "cors"; this.cache = init.cache || "default"; this.referrer = "about:client"; this.integrity = ""; this.keepalive = false; this.destination = "";
+    if (init.credentials) this.credentials = init.credentials;
+    if (init.mode) this.mode = init.mode;
+    if (init.cache) this.cache = init.cache;
   }
-  get method() { return this.#method; }
+  get url() { return this._url !== undefined ? this._url : (this._url = ops.op_kestrel_http_url(this[kReqId])); }
+  set url(v) { this._url = v; }
+  get method() { return this._method !== undefined ? this._method : (this._method = ops.op_kestrel_http_method(this[kReqId])); }
+  set method(v) { this._method = v; }
   get headers() {
     if (this.#headers === null) {
       this.#headers = new Headers();
@@ -140,6 +145,7 @@ class Request {
   clone() { const r = new Request(this); r[kReqId] = this[kReqId]; return r; }
   get [Symbol.toStringTag]() { return "Request"; }
 }
+Object.assign(Request.prototype, { signal: null, redirect: "follow", credentials: "same-origin", mode: "cors", cache: "default", referrer: "about:client", integrity: "", keepalive: false, destination: "", _url: undefined, _method: undefined });
 Object.defineProperties(Request.prototype, Object.getOwnPropertyDescriptors(BodyMixin));
 globalThis.Request = Request;
 
@@ -216,7 +222,7 @@ function serve(options) {
   const workers = Math.max(1, Math.min(options.workers === "auto" || options.workers === undefined ? cpus : options.workers | 0, 256));
   if (workerId === 0 && workers > 1) ops.op_kestrel_spawn_workers(workers - 1);
 
-  const rid = ops.op_kestrel_http_listen(hostname, port);
+  const rid = ops.op_kestrel_http_listen(hostname, port, workers);
   const accept = ops.op_kestrel_http_accept;
   const respond = ops.op_kestrel_http_respond;
   const respondBytes = ops.op_kestrel_http_respond_bytes;
@@ -231,28 +237,27 @@ function serve(options) {
     else drainBody(b).then((u) => respondBytes(id, r.status, hdrs, u), () => respond(id, 500, "", "Internal Server Error"));
   };
   const onError = (id) => (e) => { console.error(e); send(id, errorResp); };
-  const dispatch = (id, method, url) => {
-    const req = new Request(url, kEmpty, id, method);
+  const ERR_TUPLE = [500, "", "Internal Server Error"];
+  const headersOf = (r) => r._raw !== undefined ? r._raw : r.hasHeaders ? (r.headers.has("content-type") ? r.headers._flat() : r.headers._flat() + (r.headers._size() ? "\0" : "") + TEXT_PLAIN) : "";
+  // Called synchronously from the native HTTP task for every request. Returns
+  // [status, headersFlat, body] for synchronous handlers, undefined when the handler
+  // returned a promise (then `send` finishes the request through the respond op).
+  const trampoline = (id) => {
+    const req = new Request(undefined, kEmpty, id);
     let r;
-    try { r = handler(req); } catch (e) { onError(id)(e); return; }
-    if (r instanceof Promise) r.then((v) => send(id, v), onError(id));
-    else send(id, r);
+    try { r = handler(req); } catch (e) { console.error(e); return ERR_TUPLE; }
+    if (r instanceof Promise) { r.then((v) => send(id, v), onError(id)); return undefined; }
+    if (!(r instanceof Response)) return ERR_TUPLE;
+    const b = r[kBody];
+    const hdrs = headersOf(r);
+    if (b === null) return [r.status, hdrs, ""];
+    if (typeof b === "string" || b instanceof Uint8Array) return [r.status, hdrs, b];
+    drainBody(b).then((u) => respondBytes(id, r.status, hdrs, u), () => respond(id, 500, "", "Internal Server Error"));
+    return undefined;
   };
-  (async () => {
-    for (;;) {
-      const s = await accept(rid);
-      let start = 0;
-      for (;;) {
-        const i1 = s.indexOf("\0", start);
-        const i2 = s.indexOf("\0", i1 + 1);
-        let end = s.indexOf("\n", i2 + 1);
-        if (end === -1) end = s.length;
-        dispatch(+s.slice(start, i1), s.slice(i1 + 1, i2), s.slice(i2 + 1, end));
-        if (end >= s.length) break;
-        start = end + 1;
-      }
-    }
-  })();
+  ops.op_kestrel_http_set_handler(trampoline);
+  // Keeps the event loop alive for the lifetime of the server (never resolves).
+  accept(rid).catch(() => {});
   if (workerId === 0 && options.silent !== true) {
     console.log(`Kestrel listening on http://${hostname}:${port} (${workers} worker${workers > 1 ? "s" : ""})`);
   }

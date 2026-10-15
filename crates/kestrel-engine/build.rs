@@ -26,8 +26,11 @@ mod httpimpl {
     use std::rc::Rc;
     use deno_core::OpState;
     use deno_error::JsErrorBox;
-    pub fn listen(_: &mut OpState, _: &str, _: u16) -> Result<u32, JsErrorBox> { unreachable!() }
-    pub async fn accept(_: Rc<RefCell<OpState>>, _: u32) -> Result<String, JsErrorBox> { unreachable!() }
+    pub fn listen(_: &mut OpState, _: &str, _: u16, _: u32) -> Result<u32, JsErrorBox> { unreachable!() }
+    pub async fn accept(_: Rc<RefCell<OpState>>, _: u32) -> Result<Vec<u32>, JsErrorBox> { unreachable!() }
+    pub fn method(_: &mut OpState, _: u32) -> String { unreachable!() }
+    pub fn set_handler(_: &mut deno_core::v8::PinScope, _: Rc<RefCell<OpState>>, _: deno_core::v8::Local<deno_core::v8::Function>) { unreachable!() }
+    pub fn url(_: &mut OpState, _: u32) -> String { unreachable!() }
     pub fn respond(_: &mut OpState, _: u32, _: u16, _: &str, _: bytes::Bytes) -> Result<(), JsErrorBox> { unreachable!() }
     pub async fn body(_: Rc<RefCell<OpState>>, _: u32) -> Result<Vec<u8>, JsErrorBox> { unreachable!() }
     pub fn headers(_: &mut OpState, _: u32) -> String { unreachable!() }
