@@ -5,14 +5,37 @@ const kCtx = Symbol("vm.context");
 export function createContext(sandbox = {}) { Object.defineProperty(sandbox, kCtx, { value: true, enumerable: false, configurable: true }); return sandbox; }
 export function isContext(o) { return !!(o && o[kCtx]); }
 const fname = (o) => (typeof o === "string" ? o : (o && o.filename) || "evalmachine.<anonymous>");
-export function runInThisContext(code, options) { return ops.op_vm_run_in_this_context(String(code), fname(options)); }
-export function runInNewContext(code, sandbox = {}, options) { return ops.op_vm_run_in_new_context(String(code), sandbox, fname(options)); }
+// `importModuleDynamically`: a function (wrapped so `import()` resolves to a namespace), the
+// USE_MAIN_CONTEXT_DEFAULT_LOADER constant (main loader), or absent (import() rejects with
+// ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING, as in Node).
+function dynOf(options, referrer) {
+  const d = options && typeof options === "object" ? options.importModuleDynamically : undefined;
+  if (d === undefined) return [null, false];
+  if (d === constants.USE_MAIN_CONTEXT_DEFAULT_LOADER) return [null, true];
+  if (typeof d !== "function") throw nodeError("ERR_INVALID_ARG_TYPE", 'The "options.importModuleDynamically" property must be of type function', TypeError);
+  const wrap = (specifier, attributes) => (async () => {
+    const m = await d(specifier, referrer(), attributes);
+    if (m instanceof Module) {
+      // As in Node: the module is returned as is (the callback evaluates it if it wants to).
+      if (m.status === "errored") throw m.error;
+      return m.namespace;
+    }
+    if (m !== null && typeof m === "object" && m[Symbol.toStringTag] === "Module") return m;
+    throw nodeError("ERR_VM_MODULE_NOT_MODULE", "Provided module is not an instance of Module");
+  })();
+  return [wrap, false];
+}
+export function runInThisContext(code, options) { const [dyn, dl] = dynOf(options, () => undefined); return ops.op_vm_run_in_this_context(String(code), fname(options), dyn, dl); }
+export function runInNewContext(code, sandbox = {}, options) { const [dyn, dl] = dynOf(options, () => undefined); return ops.op_vm_run_in_new_context(String(code), sandbox, fname(options), dyn, dl); }
 export function runInContext(code, context, options) { if (!isContext(context)) throw nodeError("ERR_INVALID_ARG_TYPE", 'The "contextifiedObject" argument must be an vm.Context', TypeError); return runInNewContext(code, context, options); }
 export class Script {
-  constructor(code, options) { this.code = String(code); this.filename = fname(options); if (typeof options === "object" && options && options.filename === undefined) this.filename = "evalmachine.<anonymous>"; }
-  runInThisContext() { return runInThisContext(this.code, this.filename); }
-  runInNewContext(sandbox, options) { return runInNewContext(this.code, sandbox, options ?? this.filename); }
-  runInContext(context, options) { return runInContext(this.code, context, options ?? this.filename); }
+  constructor(code, options) {
+    this.code = String(code); this.filename = fname(options); if (typeof options === "object" && options && options.filename === undefined) this.filename = "evalmachine.<anonymous>";
+    [this._dyn, this._dl] = dynOf(options, () => this);
+  }
+  runInThisContext() { return ops.op_vm_run_in_this_context(this.code, this.filename, this._dyn, this._dl); }
+  runInNewContext(sandbox = {}, options) { return ops.op_vm_run_in_new_context(this.code, sandbox, fname(options ?? this.filename), this._dyn, this._dl); }
+  runInContext(context, options) { if (!isContext(context)) throw nodeError("ERR_INVALID_ARG_TYPE", 'The "contextifiedObject" argument must be an vm.Context', TypeError); return this.runInNewContext(context, options); }
   createCachedData() { return new Uint8Array(0); }
 }
 export function compileFunction(code, params = [], options = {}) { const f = new Function(...params, String(code)); return f; }
@@ -83,7 +106,10 @@ export class SourceTextModule extends Module {
     const ctx = contextArg(options);
     this._context = ctx ?? undefined;
     this._identifier = options.identifier !== undefined ? String(options.identifier) : `vm:module(${moduleCounter++})`;
-    this[kId] = ops.op_vm_module_compile(code, this._identifier, ctx);
+    const [dyn, dl] = dynOf(options, () => this);
+    if (options.initializeImportMeta !== undefined && typeof options.initializeImportMeta !== "function") throw nodeError("ERR_INVALID_ARG_TYPE", 'The "options.initializeImportMeta" property must be of type function', TypeError);
+    const meta = options.initializeImportMeta ? (m) => options.initializeImportMeta(m, this) : null;
+    this[kId] = ops.op_vm_module_compile(code, this._identifier, ctx, dyn, dl, meta);
     this._deps = Object.freeze(ops.op_vm_module_requests(this[kId]));
   }
   createCachedData() { return new Uint8Array(0); }

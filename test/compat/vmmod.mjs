@@ -34,6 +34,20 @@ await inCtx.link(() => { throw new Error("unexpected"); });
 await inCtx.evaluate();
 out.push(inCtx.namespace.v, inCtx.namespace.g);
 
+// Dynamic import inside vm code: callback, default-loader constant, and missing callback.
+const dynDep = new vm.SyntheticModule(["v"], function () { this.setExport("v", "dyn!"); }, { identifier: "dyn:dep" });
+const dynMod = new vm.SourceTextModule(`export const got = (await import("dep")).v; export const meta = import.meta.marker;`, {
+  identifier: "dynmain.mjs",
+  importModuleDynamically: async (spec, ref) => { out.push(spec, ref === dynMod); await dynDep.link(() => { throw new Error("none"); }); await dynDep.evaluate(); return dynDep; },
+  initializeImportMeta(meta, mod) { meta.marker = "meta:" + mod.identifier; },
+});
+await dynMod.link(() => { throw new Error("no static deps"); });
+await dynMod.evaluate();
+out.push(dynMod.namespace.got, dynMod.namespace.meta);
+const scriptDyn = new vm.Script(`import("x").then((ns) => ns.v)`, { importModuleDynamically: () => dynDep });
+out.push(await scriptDyn.runInThisContext());
+try { await vm.runInThisContext(`import("nothing")`); } catch (e) { out.push(e.code); }
+try { await new vm.SourceTextModule(`await import("nothing")`).link(() => {}).then((m) => m); } catch (e) { out.push("link:" + typeof e); }
 const s = new inspector.Session();
 s.connect();
 let evalResult;

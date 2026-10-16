@@ -790,12 +790,31 @@ macro_rules! tc_err {
     }};
 }
 
+/// Host-defined options for a `node:vm` script or module: `import()` inside it either
+/// calls the user's `importModuleDynamically` (deno_core invokes `dyn_cb` with
+/// `(specifier, attributes)`), rejects with ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING (Node's
+/// default), or, for `USE_MAIN_CONTEXT_DEFAULT_LOADER` (`default_loader`), goes through the
+/// main module loader like any other script.
+fn vm_host_options<'s>(scope: &mut v8::PinScope<'s, '_>, dyn_cb: Option<v8::Local<v8::Function>>, default_loader: bool) -> Option<v8::Local<'s, v8::Data>> {
+    if default_loader {
+        return None;
+    }
+    Some(match dyn_cb {
+        Some(f) => {
+            let key = deno_core::register_vm_dynamic_import_callback(scope, f);
+            deno_core::create_host_defined_options_with_kind_and_key(scope, deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_CALLBACK, key)
+        }
+        None => deno_core::create_host_defined_options_with_kind(scope, deno_core::host_defined_options_kind::VM_DYNAMIC_IMPORT_MISSING),
+    })
+}
+
 /// vm.runInThisContext: compile `code` as a classic script named `filename` and run it.
 #[op2]
-pub fn op_vm_run_in_this_context<'a>(scope: &mut v8::PinScope<'a, '_>, #[string] code: &str, #[string] filename: &str) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
+pub fn op_vm_run_in_this_context<'a>(scope: &mut v8::PinScope<'a, '_>, #[string] code: &str, #[string] filename: &str, dyn_cb: Option<v8::Local<v8::Function>>, default_loader: bool) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
+    let hdo = vm_host_options(scope, dyn_cb, default_loader);
     let src = v8::String::new(scope, code).ok_or_else(|| JsErrorBox::generic("source too long"))?;
     let name = v8::String::new(scope, filename).unwrap();
-    let origin = v8::ScriptOrigin::new(scope, name.into(), 0, 0, false, 0, None, false, false, false, None);
+    let origin = v8::ScriptOrigin::new(scope, name.into(), 0, 0, false, 0, None, false, false, false, hdo);
     v8::tc_scope!(let tc, scope);
     let script = v8::Script::compile(tc, src, Some(&origin));
     let Some(script) = script else { return Err(tc_err!(tc)); };
@@ -808,7 +827,8 @@ pub fn op_vm_run_in_this_context<'a>(scope: &mut v8::PinScope<'a, '_>, #[string]
 /// vm.runInNewContext: a fresh context whose global gets the sandbox's own properties;
 /// after the run they are copied back onto the sandbox. Returns the completion value.
 #[op2]
-pub fn op_vm_run_in_new_context<'a>(scope: &mut v8::PinScope<'a, '_>, #[string] code: &str, sandbox: v8::Local<v8::Object>, #[string] filename: &str) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
+pub fn op_vm_run_in_new_context<'a>(scope: &mut v8::PinScope<'a, '_>, #[string] code: &str, sandbox: v8::Local<v8::Object>, #[string] filename: &str, dyn_cb: Option<v8::Local<v8::Function>>, default_loader: bool) -> Result<v8::Local<'a, v8::Value>, JsErrorBox> {
+    let hdo = vm_host_options(scope, dyn_cb, default_loader).map(|d| v8::Global::new(scope, d));
     let ctx = v8::Context::new(scope, Default::default());
     let result = {
         let cs = &mut v8::ContextScope::new(scope, ctx);
@@ -824,7 +844,8 @@ pub fn op_vm_run_in_new_context<'a>(scope: &mut v8::PinScope<'a, '_>, #[string] 
         }
         let src = v8::String::new(cs, code).ok_or_else(|| JsErrorBox::generic("source too long"))?;
         let name = v8::String::new(cs, filename).unwrap();
-        let origin = v8::ScriptOrigin::new(cs, name.into(), 0, 0, false, 0, None, false, false, false, None);
+        let hdo = hdo.as_ref().map(|g| v8::Local::new(cs, g));
+        let origin = v8::ScriptOrigin::new(cs, name.into(), 0, 0, false, 0, None, false, false, false, hdo);
         v8::tc_scope!(let tc, cs);
         let r = match v8::Script::compile(tc, src, Some(&origin)) {
             Some(s) => s.run(tc),
@@ -884,6 +905,8 @@ struct VmModule {
     deps: HashMap<String, u32>,
     /// SyntheticModule: the JS evaluate callback run by the evaluation steps.
     synthetic: Option<v8::Global<v8::Function>>,
+    /// SourceTextModule `initializeImportMeta(meta)`.
+    meta: Option<v8::Global<v8::Function>>,
 }
 thread_local! {
     static VM_MODULES: RefCell<HashMap<u32, VmModule>> = RefCell::new(HashMap::new());
@@ -910,7 +933,7 @@ fn vm_seed_context<'s>(scope: &mut v8::PinScope<'s, '_>, sandbox: v8::Local<v8::
 fn vm_register(scope: &mut v8::PinScope, module: v8::Local<v8::Module>, context: v8::Local<v8::Context>) -> u32 {
     let id = VM_NEXT.with(|n| { let v = n.get(); n.set(v + 1); v });
     VM_BY_HASH.with(|h| h.borrow_mut().insert(module.get_identity_hash().get(), id));
-    VM_MODULES.with(|m| m.borrow_mut().insert(id, VmModule { module: v8::Global::new(scope, module), context: v8::Global::new(scope, context), deps: HashMap::new(), synthetic: None }));
+    VM_MODULES.with(|m| m.borrow_mut().insert(id, VmModule { module: v8::Global::new(scope, module), context: v8::Global::new(scope, context), deps: HashMap::new(), synthetic: None, meta: None }));
     id
 }
 
@@ -920,7 +943,12 @@ fn vm_get(id: u32) -> Result<(v8::Global<v8::Module>, v8::Global<v8::Context>), 
 
 /// Compile an ES module (in the main context, or a fresh one seeded from `sandbox`).
 #[op2(fast)]
-pub fn op_vm_module_compile(scope: &mut v8::PinScope, #[string] code: &str, #[string] identifier: &str, sandbox: Option<v8::Local<v8::Object>>) -> Result<u32, JsErrorBox> {
+pub fn op_vm_module_compile(scope: &mut v8::PinScope, #[string] code: &str, #[string] identifier: &str, sandbox: Option<v8::Local<v8::Object>>, dyn_cb: Option<v8::Local<v8::Function>>, default_loader: bool, meta_cb: Option<v8::Local<v8::Function>>) -> Result<u32, JsErrorBox> {
+    let hdo = vm_host_options(scope, dyn_cb, default_loader).map(|d| v8::Global::new(scope, d));
+    let meta_cb = meta_cb.map(|f| v8::Global::new(scope, f));
+    // import.meta for modules outside deno_core's module map (ours): per-isolate callback
+    // that looks the module up by identity.
+    deno_core::register_external_module_import_meta_cb(scope, vm_import_meta);
     let ctx = match sandbox {
         Some(sb) => vm_seed_context(scope, sb)?,
         None => scope.get_current_context(),
@@ -929,14 +957,27 @@ pub fn op_vm_module_compile(scope: &mut v8::PinScope, #[string] code: &str, #[st
         let cs = &mut v8::ContextScope::new(scope, ctx);
         let src = v8::String::new(cs, code).ok_or_else(|| JsErrorBox::generic("source too long"))?;
         let name = v8::String::new(cs, identifier).unwrap();
-        let origin = v8::ScriptOrigin::new(cs, name.into(), 0, 0, false, 0, None, false, false, true, None);
+        let hdo = hdo.as_ref().map(|g| v8::Local::new(cs, g));
+        let origin = v8::ScriptOrigin::new(cs, name.into(), 0, 0, false, 0, None, false, false, true, hdo);
         let mut source = v8::script_compiler::Source::new(src, Some(&origin));
         v8::tc_scope!(let tc, cs);
         let Some(m) = v8::script_compiler::compile_module(tc, &mut source) else { return Err(tc_err!(tc)) };
         v8::Global::new(tc, m)
     };
     let m = v8::Local::new(scope, &module);
-    Ok(vm_register(scope, m, ctx))
+    let id = vm_register(scope, m, ctx);
+    VM_MODULES.with(|m| { if let Some(e) = m.borrow_mut().get_mut(&id) { e.meta = meta_cb; } });
+    Ok(id)
+}
+
+fn vm_import_meta<'s, 'i, 'm, 'o>(scope: &mut v8::PinScope<'s, 'i>, module: v8::Local<'m, v8::Module>, meta: v8::Local<'o, v8::Object>) {
+    let id = VM_BY_HASH.with(|h| h.borrow().get(&module.get_identity_hash().get()).copied());
+    let cb = id.and_then(|id| VM_MODULES.with(|m| m.borrow().get(&id).and_then(|x| x.meta.clone())));
+    if let Some(cb) = cb {
+        let f = v8::Local::new(scope, &cb);
+        let recv = v8::undefined(scope);
+        let _ = f.call(scope, recv.into(), &[meta.into()]);
+    }
 }
 
 #[op2]

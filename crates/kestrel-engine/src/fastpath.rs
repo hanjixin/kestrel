@@ -110,6 +110,20 @@ fn try_recv_any() -> Option<Accepted> {
 
 fn register_accepted((rid, stream, live): Accepted) {
     flog(|| format!("register rid={rid}"));
+    // Backend per connection, by how many this worker already holds (the acceptor packs
+    // connections, so this is the loop's density): a loop with a handful of connections is
+    // cheapest on level-triggered epoll (one ready `read` per request); with tens to a few
+    // hundred, batching recv/send in io_uring wins 4-5 %; with thousands on one loop,
+    // io_uring's per-recv poll-arm costs 17 % (kernel 5.15, no multishot receive).
+    // `KESTREL_URING=1|0` forces one backend for every connection.
+    #[cfg(target_os = "linux")]
+    {
+        let held = live.load(std::sync::atomic::Ordering::Relaxed).saturating_sub(1);
+        if crate::uring::wants(held) && crate::uring::start() {
+            crate::uring::register_direct(rid, stream, live);
+            return;
+        }
+    }
     if !register(rid, stream, live.clone()) {
         live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
     }
@@ -134,53 +148,20 @@ impl AsRawFd for PollFd {
     }
 }
 
-/// Which backend serves this thread's fast path.
-#[derive(Clone, Copy, PartialEq)]
-enum Backend { None, Epoll, Uring }
-thread_local! { static BACKEND: std::cell::Cell<Backend> = const { std::cell::Cell::new(Backend::None) }; }
-
-/// Start this worker's fast loop (idempotent). `workers` is the server's worker count: on
-/// Linux the io_uring backend is used when the process serves with 4 or more workers (few
-/// connections per loop, where submitting recv/send in batches wins: +4 % at 64 workers),
-/// the level-triggered epoll loop otherwise (one loop holding thousands of connections
-/// loses 17 % on io_uring without multishot receive, kernel 5.15). `KESTREL_URING=1|0`
-/// forces either.
-pub fn start_for(workers: u32) -> bool {
-    match BACKEND.with(|b| b.get()) {
-        Backend::None => {}
-        _ => return true,
-    }
-    #[cfg(target_os = "linux")]
-    {
-        let want = match std::env::var("KESTREL_URING").ok().as_deref() {
-            Some("1") => true,
-            Some(_) => false,
-            None => workers >= 4,
-        };
-        if want && crate::uring::start() {
-            BACKEND.with(|b| b.set(Backend::Uring));
-            return true;
-        }
-    }
-    if start_epoll() {
-        BACKEND.with(|b| b.set(Backend::Epoll));
-        return true;
-    }
-    false
-}
-
-/// Hand a port's connection receiver to whichever loop runs on this thread.
-pub fn adopt(rid: u32, rx: httpimpl::ConnRx) -> bool {
-    match BACKEND.with(|b| b.get()) {
-        #[cfg(target_os = "linux")]
-        Backend::Uring => crate::uring::adopt(rid, rx),
-        Backend::Epoll => adopt_epoll(rid, rx),
-        _ => false,
-    }
+/// Start this worker's fast loop (idempotent): the level-triggered epoll/kqueue loop. On
+/// Linux an io_uring loop is started lazily beside it and connections are placed on one or
+/// the other at accept time (see `register_accepted`).
+pub fn start_for(_workers: u32) -> bool {
+    start_epoll()
 }
 
 pub fn start() -> bool {
-    start_for(1)
+    start_epoll()
+}
+
+/// Hand a port's connection receiver to this thread's loop.
+pub fn adopt(rid: u32, rx: httpimpl::ConnRx) -> bool {
+    adopt_epoll(rid, rx)
 }
 
 fn start_epoll() -> bool {
@@ -247,6 +228,21 @@ fn start_epoll() -> bool {
 
 /// Batches served per scheduler turn before yielding to the rest of the runtime.
 const DRAIN_BUDGET: usize = 2;
+
+thread_local! { static SCRATCH_EVENTS: RefCell<Option<Events>> = const { RefCell::new(None) }; }
+
+/// Serve whatever is ready on this thread's epoll loop right now (no blocking). The io_uring
+/// loop calls this between its busy turns so connections that live on the epoll loop of the
+/// same worker are not starved while it submit-and-waits.
+#[cfg(target_os = "linux")]
+pub(crate) fn poll_epoll_once() -> bool {
+    let poller = FAST.with(|f| f.borrow().as_ref().map(|x| x.borrow().poller.clone()));
+    let Some(poller) = poller else { return false };
+    let mut events = SCRATCH_EVENTS.with(|e| e.borrow_mut().take()).unwrap_or_else(Events::new);
+    let more = drain(&poller, &mut events, None);
+    SCRATCH_EVENTS.with(|e| *e.borrow_mut() = Some(events));
+    more
+}
 
 /// Serve up to `DRAIN_BUDGET` batches of ready events. Returns true if the poller may still
 /// have ready events (budget exhausted). When the poller is empty, clears tokio's

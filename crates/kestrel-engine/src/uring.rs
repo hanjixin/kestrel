@@ -71,8 +71,6 @@ struct Uring {
     conns: Vec<Option<UConn>>,
     free: Vec<usize>,
     done_tx: tokio::sync::mpsc::UnboundedSender<(usize, u32, Outgoing)>,
-    rxs: Vec<(u32, httpimpl::ConnRx)>,
-    new_rx: Arc<tokio::sync::Notify>,
     /// SQEs pushed since the last `submit`.
     dirty: bool,
 }
@@ -116,8 +114,7 @@ pub fn start() -> bool {
         }
     };
     let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel::<(usize, u32, Outgoing)>();
-    let new_rx = Arc::new(tokio::sync::Notify::new());
-    let u = Rc::new(RefCell::new(Uring { ring, conns: Vec::new(), free: Vec::new(), done_tx, rxs: Vec::new(), new_rx: new_rx.clone(), dirty: false }));
+    let u = Rc::new(RefCell::new(Uring { ring, conns: Vec::new(), free: Vec::new(), done_tx, dirty: false }));
     URING.with(|s| *s.borrow_mut() = Some(u));
     flog(|| "io_uring loop started".to_string());
     let ext_arg = with_uring(|u| u.ring.params().is_feature_ext_arg()).unwrap_or(false);
@@ -145,11 +142,10 @@ pub fn start() -> bool {
                 })
                 .map(|_| turn_count())
                 .unwrap_or(0);
+                // Connections on this worker's epoll loop get served between busy turns.
+                crate::fastpath::poll_epoll_once();
                 while let Ok((key, gen, out)) = done_rx.try_recv() {
                     complete_async(key, gen, out);
-                }
-                while let Some(acc) = try_recv_any() {
-                    register_accepted(acc);
                 }
                 busy = n >= BUSY_MIN;
                 busy_turns += 1;
@@ -172,18 +168,10 @@ pub fn start() -> bool {
                 Some((key, gen, out)) = done_rx.recv() => {
                     complete_async(key, gen, out);
                 }
-                acc = recv_any() => {
-                    register_accepted(acc);
-                }
-                _ = new_rx.notified() => {}
             }
-            // Never let accepted connections or finished handlers queue up behind a busy
-            // completion queue (the select above services one branch per turn).
+            // Finished handlers must not queue up behind a busy completion queue.
             while let Ok((key, gen, out)) = done_rx.try_recv() {
                 complete_async(key, gen, out);
-            }
-            while let Some(acc) = try_recv_any() {
-                register_accepted(acc);
             }
             if !busy {
                 with_uring(flush_sq);
@@ -193,51 +181,22 @@ pub fn start() -> bool {
     true
 }
 
-pub fn adopt(rid: u32, rx: httpimpl::ConnRx) -> bool {
-    flog(|| format!("uring adopt rid={rid}"));
-    with_uring(|u| {
-        u.rxs.push((rid, rx));
-        u.new_rx.notify_one();
-    })
-    .is_some()
+/// Whether a new connection on a loop already holding `held` connections should go to
+/// io_uring (see `fastpath::register_accepted`).
+pub fn wants(held: usize) -> bool {
+    static MODE: std::sync::OnceLock<u8> = std::sync::OnceLock::new();
+    match MODE.get_or_init(|| match std::env::var("KESTREL_URING").ok().as_deref() { Some("1") => 1, Some(_) => 0, None => 2 }) {
+        1 => true,
+        0 => false,
+        _ => (16..528).contains(&held),
+    }
 }
 
-fn recv_any() -> impl std::future::Future<Output = Accepted> {
-    std::future::poll_fn(|cx| {
-        with_uring(|u| {
-            let mut i = 0;
-            while i < u.rxs.len() {
-                let rid = u.rxs[i].0;
-                match u.rxs[i].1.poll_recv(cx) {
-                    std::task::Poll::Ready(Some((s, l))) => return std::task::Poll::Ready((rid, s, l)),
-                    std::task::Poll::Ready(None) => {
-                        u.rxs.swap_remove(i);
-                    }
-                    std::task::Poll::Pending => i += 1,
-                }
-            }
-            std::task::Poll::Pending
-        })
-        .unwrap_or(std::task::Poll::Pending)
-    })
-}
-
-fn try_recv_any() -> Option<Accepted> {
-    with_uring(|u| {
-        let mut i = 0;
-        while i < u.rxs.len() {
-            let rid = u.rxs[i].0;
-            match u.rxs[i].1.try_recv() {
-                Ok((s, l)) => return Some((rid, s, l)),
-                Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
-                    u.rxs.swap_remove(i);
-                }
-                Err(tokio::sync::mpsc::error::TryRecvError::Empty) => i += 1,
-            }
-        }
-        None
-    })
-    .flatten()
+/// Register a connection on this thread's io_uring loop and submit its first `recv` now.
+pub fn register_direct(rid: u32, stream: std::net::TcpStream, live: Arc<AtomicUsize>) {
+    flog(|| format!("uring register rid={rid}"));
+    register_accepted((rid, stream, live));
+    with_uring(flush_sq);
 }
 
 fn register_accepted((rid, stream, live): Accepted) {
