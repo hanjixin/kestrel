@@ -32,7 +32,7 @@ A Linux build is produced in Docker with the `rust:bullseye` image (glibc 2.31, 
 
 ## Compatibility status
 
-Verified by `test/compat` (each file runs under node and kestrel and the outputs are compared):
+Verified by `test/compat` (each file runs under node and kestrel and the outputs are compared; `cert.pem`/`key.pem` there are a self-signed certificate for 127.0.0.1 used only by the local TLS tests):
 
 - `builtins.cjs`: path, fs, util.inspect/format, events, Buffer, crypto (hashes, HMAC, PBKDF2, scrypt, HKDF, AES-GCM/CBC/CTR), zlib (gzip, deflate, brotli), URL/URLSearchParams, querystring, string_decoder, streams + pipeline, os, process, assert. Output is identical to Node 22.
 - `proc.mjs`: child_process `spawn`/`exec`/`execFile`/`execSync`/`execFileSync`/`spawnSync` with piped stdio, exit codes, ENOENT; fd-level fs (`openSync`/`readSync`/`writeSync`/`fstatSync`/`ftruncateSync`, `fs.promises.open` FileHandle). Identical to Node.
@@ -142,3 +142,7 @@ test/compat/            Node compatibility tests (compare with `node`)
 bench/                  hello servers, macOS/Linux-Docker scripts, bench/remote for the test nodes
 docs/ARCHITECTURE.md    design, invariants, roadmap
 ```
+
+## License
+
+Apache-2.0 (see `LICENSE`). `crates/kestrel-napi` is derived from Deno's Node-API implementation and stays under the MIT license (see `crates/kestrel-napi/LICENSE`).
