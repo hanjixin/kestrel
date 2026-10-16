@@ -441,7 +441,7 @@ checksum = "157a8ba7b480713b56f4c09fd13fc3e0a22a5dfab8097ba61cbc5feef950788a"
 dependencies = [
  "glob",
  "libc",
- "libloading",
+ "libloading 0.8.9",
 ]
 
 [[package]]
@@ -1837,6 +1837,7 @@ dependencies = [
  "hyper-util",
  "io-uring",
  "kestrel-aot",
+ "kestrel-napi",
  "libc",
  "md-5",
  "notify",
@@ -1866,6 +1867,21 @@ dependencies = [
  "tokio-rustls",
  "url",
  "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "kestrel-napi"
+version = "0.0.1"
+dependencies = [
+ "deno_core",
+ "deno_error",
+ "libc",
+ "libloading 0.7.4",
+ "libuv-sys-lite",
+ "log",
+ "napi_sym",
+ "object",
+ "thiserror",
 ]
 
 [[package]]
@@ -1905,6 +1921,16 @@ checksum = "ce5d3ddc6d3fa000eb1536d85e147bfe31aacaba692ed6a876f95cb7c855be78"
 
 [[package]]
 name = "libloading"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b67380fd3b2fbe7527a606e18729d21c6f3951633d0500574c4dc22d2d638b9f"
+dependencies = [
+ "cfg-if",
+ "winapi",
+]
+
+[[package]]
+name = "libloading"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d7c4b02199fee7c5d21a5ae7d8cfa79a6ef5bb2fc834d6e9058e89c825efdc55"
@@ -1926,6 +1952,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a45a52f43e1c16f667ccfe4dd8c85b7f7c204fd5e3bf46c5b0db9a5c3c0b8e9"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "libuv-sys-lite"
+version = "1.48.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef43df715b26b66832106cde0adc4c156bc91f46fc35164ab257281f62657956"
+dependencies = [
+ "bindgen 0.70.1",
+ "libloading 0.8.9",
 ]
 
 [[package]]
@@ -2054,6 +2090,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "napi_sym"
+version = "0.189.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69cdbe713a0c3cd1ef9a41b51b65a1ba9deb41139516034414604ede94b0267e"
+dependencies = [
+ "quote",
+ "serde",
+ "serde_json",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2159,6 +2207,15 @@ checksum = "071dfc062690e90b734c0b2273ce72ad0ffa95f0c74596bc250dcfd960262841"
 dependencies = [
  "autocfg",
  "libm",
+]
+
+[[package]]
+name = "object"
+version = "0.36.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]

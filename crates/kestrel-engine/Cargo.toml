@@ -6,6 +6,7 @@ license.workspace = true
 
 [build-dependencies]
 deno_core.workspace = true
+kestrel-napi = { path = "../kestrel-napi" }
 deno_error = "0.7"
 bytes.workspace = true
 socket2.workspace = true
@@ -50,6 +51,7 @@ webpki-roots = "0.26"
 notify = "8"
 
 [dependencies]
+kestrel-napi = { path = "../kestrel-napi" }
 httparse = "1"
 httpdate = "1"
 polling = "3"

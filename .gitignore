@@ -1,3 +1,4 @@
 target/
 target-linux*/
 *.log
+test/compat/napi/hello.node

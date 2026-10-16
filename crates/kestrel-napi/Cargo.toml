@@ -1,0 +1,21 @@
+[package]
+name = "kestrel-napi"
+version = "0.0.1"
+edition = "2024"
+license = "MIT"
+description = "Node-API (N-API) for kestrel: deno_napi 0.190.0 (MIT, Deno authors) with the Deno-specific permission and loader hooks removed"
+publish = false
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+deno_core.workspace = true
+deno_error = "=0.7.1"
+libc = "0.2"
+libloading = "0.7"
+libuv-sys-lite = { version = "=1.48.4", features = ["dyn-symbols"] }
+log = { version = "0.4", features = ["kv"] }
+napi_sym = "=0.189.0"
+object = { version = "0.36", default-features = false, features = ["read_core", "pe"] }
+thiserror = "2"

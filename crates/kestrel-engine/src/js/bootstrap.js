@@ -52,6 +52,8 @@ const builtins = {
   tls, dns, "dns/promises": dnsPromises, dgram, perf_hooks, v8, vm, cluster, constants, sys: util, async_hooks, inspector, "inspector/promises": inspectorPromises, http2,
 };
 _registerBuiltins(builtins);
+// process.dlopen(module, filename): Node-API addon into module.exports.
+globalThis.process.dlopen = (m, filename) => { m.exports = module.dlopenExports(filename); };
 globalThis[Symbol.for("kestrel.builtin")] = (name) => builtins[String(name).replace(/^node:/, "")];
 
 // ---------- Node globals ----------

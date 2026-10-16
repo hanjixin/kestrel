@@ -95,7 +95,7 @@ function loadInto(module, filename) {
     module.loaded = true;
     return;
   }
-  if (filename.endsWith(".node")) throw nodeError("ERR_DLOPEN_FAILED", "Native addons (.node) are not supported: " + filename);
+  if (filename.endsWith(".node")) { module.exports = dlopenExports(filename); module.loaded = true; return module; }
   let src = ops.op_k_fs_read_text(filename);
   if (/\.(ts|cts|mts|tsx)$/.test(filename)) src = ops.op_k_transpile(filename, src);
   // require(esm): rewrite ES module syntax to CommonJS on the fly (like Node 22).
@@ -119,6 +119,16 @@ globalThis[Symbol.for("kestrel.require")] = (filename) => loadFile(filename, fil
 
 export const _cache = cache;
 export const _extensions = Module._extensions;
+
+// Node-API addons: the native layer calls back for Buffers, fatal exceptions and
+// async_hooks events (the hooks are no-ops here, as with createHook).
+export function dlopenExports(filename) {
+  const ops = Deno.core.ops;
+  const createBuffer = (ab) => globalThis.Buffer.from(ab);
+  const reportError = (e) => { globalThis.process.emit("uncaughtException", e); };
+  const noop = () => {};
+  return ops.op_napi_open(String(filename), globalThis, createBuffer, reportError, noop, noop, noop, noop);
+}
 export const wrap = Module.wrap;
 export const wrapper = Module.wrapper;
 export const _nodeModulePaths = Module._nodeModulePaths;
@@ -129,4 +139,5 @@ export const syncBuiltinESMExports = Module.syncBuiltinESMExports;
 export const findSourceMap = Module.findSourceMap;
 export const register = Module.register;
 export const enableCompileCache = Module.enableCompileCache;
+Module.dlopenExports = dlopenExports;
 export default Module;

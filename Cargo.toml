@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/kestrel-cli", "crates/kestrel-engine", "crates/kestrel-aot"]
+members = ["crates/kestrel-cli", "crates/kestrel-engine", "crates/kestrel-aot", "crates/kestrel-napi"]
 
 [workspace.package]
 version = "0.0.1"

@@ -28,7 +28,7 @@ impl Runtime {
         let params = deno_core::v8::CreateParams::default().set_max_young_generation_size_in_bytes(young);
         let mut js = JsRuntime::new(RuntimeOptions {
             module_loader: Some(Rc::new(KestrelModuleLoader)),
-            extensions: vec![ops::kestrel::init()],
+            extensions: vec![ops::kestrel::init(), kestrel_napi::deno_napi::init()],
             startup_snapshot: Some(SNAPSHOT),
             create_params: Some(params),
             // In-process `node:inspector` sessions (CDP over deno_core's local session).

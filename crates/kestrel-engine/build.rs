@@ -91,7 +91,7 @@ fn main() {
             cargo_manifest_dir: env!("CARGO_MANIFEST_DIR"),
             startup_snapshot: None,
             skip_op_registration: false,
-            extensions: vec![ops::kestrel::init()],
+            extensions: vec![ops::kestrel::init(), kestrel_napi::deno_napi::init()],
             extension_transpiler: None,
             with_runtime_cb: None,
         },
