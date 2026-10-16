@@ -21,5 +21,8 @@ case "$1" in
   stop)
     pkill -f "hello_kestrel" 2>/dev/null; pkill -f "hello_node" 2>/dev/null; pkill -f "hello_bun" 2>/dev/null
     for i in 1 2 3 4 5; do pgrep -f "hello_(kestrel|node|bun)" >/dev/null || break; sleep 0.5; done
-    pkill -9 -f "hello_(kestrel|node|bun)" 2>/dev/null; sleep 0.5 ;;
+    pkill -9 -f "hello_(kestrel|node|bun)" 2>/dev/null
+    # Also kill any stray server by exact binary name: a leftover process from an earlier,
+    # interrupted run keeps the port and silently collapses the next measurement.
+    pkill -9 -x kestrel 2>/dev/null; pkill -9 -x bun 2>/dev/null; pkill -9 -x node 2>/dev/null; sleep 0.5 ;;
 esac

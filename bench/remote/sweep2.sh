@@ -1,7 +1,7 @@
 #!/bin/bash
 # Process/worker-count sweep: kestrel (threads) and bun reusePort (processes), 4096 and 256 connections.
 cd ~/kb; ulimit -n 65535
-pkill -f hello_ 2>/dev/null; sleep 0.5
+pkill -9 -f hello_ 2>/dev/null; pkill -9 -x kestrel 2>/dev/null; pkill -9 -x bun 2>/dev/null; pkill -9 -x node 2>/dev/null; sleep 1
 m() { awk '/Requests\/sec/ {r=$2} $1=="99%" {p=$2} /Socket errors/ {e=$0} END {print r " req/s  p99 " p "  " e}'; }
 for W in ${KWS:-16 24 32 40}; do
   PORT=3310 WORKERS=$W nohup ./kestrel bench/hello_kestrel.ts >/dev/null 2>&1 & sleep 4
