@@ -22,6 +22,14 @@
 //! 2. Add the function's identifier to this JSON list.
 //! 3. Finally, run `tools/napi/generate_symbols_list.js` to update `ext/napi/generated_symbol_exports_list_*.def`.
 
+/// `KESTREL_NAPI_LOG=1`: trace selected N-API / uv entry points to stderr.
+pub fn napi_trace(what: &str) {
+  static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+  if *ON.get_or_init(|| std::env::var("KESTREL_NAPI_LOG").is_ok()) {
+    eprintln!("[napi] {what}");
+  }
+}
+
 pub mod js_native_api;
 pub mod node_api;
 pub mod util;

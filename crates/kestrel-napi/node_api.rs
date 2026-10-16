@@ -731,6 +731,7 @@ pub(crate) fn napi_create_async_work(
   data: *mut c_void,
   result: *mut napi_async_work,
 ) -> napi_status {
+  crate::napi_trace("napi_create_async_work");
   let env_ptr = env;
   let env = check_env!(env);
   check_arg!(env, execute);
@@ -779,6 +780,7 @@ pub(crate) fn napi_delete_async_work(
   env: *mut Env,
   work: napi_async_work,
 ) -> napi_status {
+  crate::napi_trace("napi_delete_async_work");
   let env = check_env!(env);
   check_arg!(env, work);
 
@@ -792,6 +794,7 @@ fn napi_get_uv_event_loop(
   env_ptr: *mut Env,
   uv_loop: *mut *mut (),
 ) -> napi_status {
+  crate::napi_trace("napi_get_uv_event_loop");
   let env = check_env!(env_ptr);
   check_arg!(env, uv_loop);
   unsafe {
@@ -805,6 +808,7 @@ pub(crate) fn napi_queue_async_work(
   env: *mut Env,
   work: napi_async_work,
 ) -> napi_status {
+  crate::napi_trace("napi_queue_async_work");
   let env = check_env!(env);
   check_arg!(env, work);
 

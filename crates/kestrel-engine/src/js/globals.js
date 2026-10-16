@@ -279,7 +279,7 @@ let startMs = 0;
 let exitCode;
 const process = {
   ...emitter,
-  title: "kestrel", version: "v22.12.0", versions: { node: "22.12.0", kestrel: "0.0.1", v8: ops.op_kestrel_v8_version(), uv: "1.49.0", modules: "127" },
+  title: "kestrel", version: "v22.12.0", versions: { node: "22.12.0", kestrel: "0.0.1", v8: ops.op_kestrel_v8_version(), uv: "1.49.0", modules: "127", napi: "10" },
   argv: [], argv0: "kestrel", execArgv: [], env: {}, platform: "darwin", pid: 0, ppid: 0, arch: "arm64", execPath: "",
   release: { name: "node", lts: "Jod" }, config: { variables: {} }, features: { inspector: false, debug: false, uv: true, ipv6: true, tls: true, cached_builtins: true },
   get exitCode() { return exitCode; }, set exitCode(c) { exitCode = c; },

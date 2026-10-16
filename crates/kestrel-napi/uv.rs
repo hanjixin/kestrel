@@ -53,6 +53,7 @@ struct uv_mutex_t {
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
+  crate::napi_trace("uv_mutex_init");
   unsafe {
     addr_of_mut!((*lock).mutex).write(Mutex::new(()));
     0
@@ -61,6 +62,7 @@ unsafe extern "C" fn uv_mutex_init(lock: *mut uv_mutex_t) -> c_int {
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn uv_mutex_lock(lock: *mut uv_mutex_t) {
+  crate::napi_trace("uv_mutex_lock");
   unsafe {
     let guard = (*lock).mutex.lock();
     // forget the guard so it doesn't unlock when it goes out of scope.
@@ -71,6 +73,7 @@ unsafe extern "C" fn uv_mutex_lock(lock: *mut uv_mutex_t) {
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn uv_mutex_unlock(lock: *mut uv_mutex_t) {
+  crate::napi_trace("uv_mutex_unlock");
   unsafe {
     (*lock).mutex.force_unlock();
   }
@@ -213,6 +216,7 @@ unsafe extern "C" fn _napi_uv_async_init(
   r#async: *mut uv_async_t,
   async_cb: uv_async_cb,
 ) -> c_int {
+  crate::napi_trace("_napi_uv_async_init");
   unsafe {
     addr_of_mut!((*r#async).r#loop).write(r#loop);
     addr_of_mut!((*r#async).r#type).write(uv_handle_type::UV_ASYNC);
@@ -254,6 +258,7 @@ unsafe extern "C" fn _napi_uv_async_init(
 
 #[unsafe(no_mangle)]
 unsafe extern "C" fn uv_async_send(handle: *mut uv_async_t) -> c_int {
+  crate::napi_trace("uv_async_send");
   // Dispatch directly to the main thread. Unlike napi_queue_async_work (which
   // runs `execute` on a worker thread), uv_async callbacks need V8 access so
   // they must run on the main thread.
@@ -285,6 +290,7 @@ unsafe extern "C" fn _napi_uv_close(
   handle: *mut uv_handle_t,
   close: Option<uv_close_cb>,
 ) {
+  crate::napi_trace("_napi_uv_close");
   unsafe {
     if handle.is_null() {
       if let Some(close) = close {
@@ -1318,6 +1324,7 @@ unsafe extern "C" fn uv_queue_work(
   work_cb: uv_work_cb,
   after_work_cb: uv_after_work_cb,
 ) -> c_int {
+  crate::napi_trace("uv_queue_work");
   unsafe {
     (*req).r#loop = r#loop;
     (*req).work_cb = work_cb;

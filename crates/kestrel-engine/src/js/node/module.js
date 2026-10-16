@@ -106,10 +106,13 @@ function loadInto(module, filename) {
 
 function compileAndRun(module, src, filename) {
   if (src.startsWith("#!")) src = "//" + src;
-  // Function constructor (not eval) so the module gets its own scope; sourceURL keeps stack traces readable.
+  // Compiled as a script whose origin is the real file (as Node does), so V8 call sites
+  // report the file name: stack traces, `Error.prepareStackTrace` users such as `bindings`
+  // and `callsites`, and source maps all see the path. The wrapper sits on the first line,
+  // so line numbers match Node's. Dynamic import() inside goes through the main loader.
   let fn;
-  try { fn = new Function("exports", "require", "module", "__filename", "__dirname", src + "\n//# sourceURL=" + filename); }
-  catch (e) { if (e instanceof SyntaxError) e.message += "\n    at " + filename; throw e; }
+  try { fn = ops.op_vm_run_in_this_context("(function (exports, require, module, __filename, __dirname) {" + src + "\n})", filename, null, true); }
+  catch (e) { if (e instanceof SyntaxError || (e && e.name === "SyntaxError")) { const err = new SyntaxError(e.message + "\n    at " + filename); throw err; } throw e; }
   const require = requireFrom(filename);
   fn.call(module.exports, module.exports, require, module, filename, dirname(filename));
 }

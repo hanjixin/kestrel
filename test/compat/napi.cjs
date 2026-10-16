@@ -9,4 +9,11 @@ try { addon.sum("nope"); } catch (e) { out.push(e.name, e.code); }
 const c = new addon.Counter();
 c.add(1.5); out.push(c.add(2), c instanceof addon.Counter, typeof addon.Counter);
 const v = addon.version(); out.push(v.major >= 22, v.napi >= 8);
-addon.squareAsync(12).then((r) => { out.push(r); const m = { exports: {} }; process.dlopen(m, path.join(__dirname, "napi", "hello.node")); out.push(m.exports.add(1, 1)); console.log(JSON.stringify(out)); });
+out.push(addon.stress({ o: 1 }, function (x) { return typeof x; }));
+const w = new addon.Wrapped();
+const st = new addon.Stmt(w, "select 1", function () {}); out.push(st.report, st.sql);
+let pending = 3;
+const done = () => { if (--pending === 0) { const m = { exports: {} }; process.dlopen(m, path.join(__dirname, "napi", "hello.node")); out.push(m.exports.add(1, 1)); console.log(JSON.stringify(out)); } };
+addon.later(7, function (v) { out.push("later", v, this === globalThis); done(); });
+w.addLater(2.5, function (v) { out.push("wrapped", v, this === w); done(); });
+addon.squareAsync(12).then((r) => { out.push(r); done(); });

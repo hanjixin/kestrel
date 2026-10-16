@@ -2,3 +2,5 @@ target/
 target-linux*/
 *.log
 test/compat/napi/hello.node
+test/compat/node_modules/
+test/compat/package-lock.json

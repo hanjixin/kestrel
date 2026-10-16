@@ -195,6 +195,14 @@ function _listeners(target, type, unwrap) {
 
 // Move the class prototype/statics onto the function constructor.
 EventEmitter.prototype = EventEmitterImpl.prototype;
+// Node defines the prototype methods by assignment, so they are enumerable; code that copies
+// them with `for (k in EventEmitter.prototype)` (node-sqlite3's inherits, older mixins)
+// depends on that.
+for (const k of Object.getOwnPropertyNames(EventEmitterImpl.prototype)) {
+  if (k === "constructor" || k.startsWith("_")) continue;
+  const d = Object.getOwnPropertyDescriptor(EventEmitterImpl.prototype, k);
+  if (d && "value" in d && typeof d.value === "function") Object.defineProperty(EventEmitterImpl.prototype, k, { ...d, enumerable: true });
+}
 Object.defineProperty(EventEmitter.prototype, "constructor", { value: EventEmitter, writable: true, configurable: true });
 for (const k of Object.getOwnPropertyNames(EventEmitterImpl)) {
   if (k === "prototype" || k === "length" || k === "name") continue;

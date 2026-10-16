@@ -285,6 +285,7 @@ fn napi_create_function<'s>(
   data: *mut c_void,
   result: *mut napi_value<'s>,
 ) -> napi_status {
+  crate::napi_trace("napi_create_function");
   let env_ptr = env as *mut Env;
   check_arg!(env, result);
   check_arg!(env, cb);
@@ -318,6 +319,7 @@ fn napi_define_class<'s>(
   properties: *const napi_property_descriptor,
   result: *mut napi_value<'s>,
 ) -> napi_status {
+  crate::napi_trace("napi_define_class");
   let env_ptr = env as *mut Env;
   check_arg!(env, result);
   check_arg!(env, constructor);
@@ -2418,6 +2420,7 @@ fn napi_call_function<'s>(
   argv: *const napi_value<'s>,
   result: *mut napi_value<'s>,
 ) -> napi_status {
+  crate::napi_trace("napi_call_function");
   check_arg!(env, recv);
   let args = if argc > 0 {
     check_arg!(env, argv);
@@ -2431,6 +2434,13 @@ fn napi_call_function<'s>(
   let Some(func) =
     func.and_then(|f| v8::Local::<v8::Function>::try_from(f).ok())
   else {
+    if std::env::var("KESTREL_NAPI_LOG").is_ok() {
+      v8::callback_scope!(unsafe scope, env.context());
+      let f: Option<v8::Local<v8::Value>> = *func;
+      let r: Option<v8::Local<v8::Value>> = *recv;
+      let addr = |v: Option<v8::Local<v8::Value>>| v.map(|l| unsafe { std::mem::transmute::<v8::Local<v8::Value>, *const u8>(l) }).map(|p| format!("{p:p}")).unwrap_or_default();
+      eprintln!("[napi] call_function: func={} @{} recv={} @{} argc={argc}", f.map(|v| v.type_repr()).unwrap_or("<null>"), addr(f), r.map(|v| v.type_repr()).unwrap_or("<null>"), addr(r));
+    }
     return napi_function_expected;
   };
 
@@ -2464,6 +2474,7 @@ fn napi_get_global(env_ptr: *mut Env, result: *mut napi_value) -> napi_status {
 
 #[napi_sym]
 fn napi_throw(env: *mut Env, error: napi_value) -> napi_status {
+  crate::napi_trace("napi_throw");
   let env = check_env!(env);
   check_arg!(env, error);
 
@@ -2479,6 +2490,11 @@ fn napi_throw(env: *mut Env, error: napi_value) -> napi_status {
   let error = {
     let error = error.unwrap();
     v8::callback_scope!(unsafe scope, env.context());
+    if std::env::var("KESTREL_NAPI_LOG").is_ok() {
+      let s = error.to_rust_string_lossy(scope);
+      let stack = v8::Local::<v8::Object>::try_from(error).ok().and_then(|o| { let k = v8::String::new(scope, "stack").unwrap(); o.get(scope, k.into()) }).map(|v| v.to_rust_string_lossy(scope)).unwrap_or_default();
+      eprintln!("[napi] throw: {s}\n{stack}");
+    }
     v8::Global::new(scope, error)
   };
   env.last_exception = Some(error);
@@ -3049,6 +3065,7 @@ fn napi_wrap(
   finalize_hint: *mut c_void,
   result: *mut napi_ref,
 ) -> napi_status {
+  crate::napi_trace("napi_wrap");
   check_arg!(env, js_object);
   let env_ptr = env as *mut Env;
 
@@ -3148,6 +3165,7 @@ fn napi_unwrap(
   obj: napi_value,
   result: *mut *mut c_void,
 ) -> napi_status {
+  crate::napi_trace("napi_unwrap");
   unwrap(env, obj, result, true)
 }
 
@@ -3157,6 +3175,7 @@ fn napi_remove_wrap(
   obj: napi_value,
   result: *mut *mut c_void,
 ) -> napi_status {
+  crate::napi_trace("napi_remove_wrap");
   unwrap(env, obj, result, false)
 }
 
@@ -3345,6 +3364,7 @@ fn napi_create_reference(
   initial_refcount: u32,
   result: *mut napi_ref,
 ) -> napi_status {
+  crate::napi_trace("napi_create_reference");
   let env = check_env!(env);
   check_arg!(env, value);
   check_arg!(env, result);
@@ -3372,6 +3392,7 @@ fn napi_create_reference(
 
 #[napi_sym]
 fn napi_delete_reference(env: *mut Env, ref_: napi_ref) -> napi_status {
+  crate::napi_trace("napi_delete_reference");
   let env = check_env!(env);
   check_arg!(env, ref_);
 
@@ -3388,6 +3409,7 @@ fn napi_reference_ref(
   ref_: napi_ref,
   result: *mut u32,
 ) -> napi_status {
+  crate::napi_trace("napi_reference_ref");
   let env = check_env!(env);
   check_arg!(env, ref_);
 
@@ -3410,6 +3432,7 @@ fn napi_reference_unref(
   ref_: napi_ref,
   result: *mut u32,
 ) -> napi_status {
+  crate::napi_trace("napi_reference_unref");
   let env = check_env!(env);
   check_arg!(env, ref_);
 
@@ -3436,6 +3459,7 @@ fn napi_get_reference_value(
   ref_: napi_ref,
   result: *mut napi_value,
 ) -> napi_status {
+  crate::napi_trace("napi_get_reference_value");
   let env = check_env!(env_ptr);
   check_arg!(env, ref_);
   check_arg!(env, result);
@@ -3448,6 +3472,11 @@ fn napi_get_reference_value(
     ReferenceState::Strong(g) => Some(v8::Local::new(scope, g)),
     ReferenceState::Weak(w) => w.to_local(scope),
   };
+  if std::env::var("KESTREL_NAPI_LOG").is_ok() {
+    let addr = value.map(|l| unsafe { std::mem::transmute::<v8::Local<v8::Value>, *const u8>(l) }).map(|p| format!("{p:p}")).unwrap_or_default();
+    let desc = value.map(|v| format!("obj={} undef={} null={} ext={} str={} fn={} repr={}", v.is_object(), v.is_undefined(), v.is_null(), v.is_external(), v.is_string(), v.is_function(), v.to_rust_string_lossy(scope).chars().take(60).collect::<String>())).unwrap_or_default();
+    eprintln!("[napi] get_reference_value @{} ({}) {}", addr, if matches!(reference.state, ReferenceState::Strong(_)) { "strong" } else { "weak" }, desc);
+  }
 
   unsafe {
     *result = value.into();
@@ -3540,6 +3569,7 @@ fn napi_new_instance<'s>(
   argv: *const napi_value,
   result: *mut napi_value<'s>,
 ) -> napi_status {
+  crate::napi_trace("napi_new_instance");
   check_arg!(env, constructor);
   if argc > 0 {
     check_arg!(env, argv);
@@ -3624,6 +3654,7 @@ fn napi_is_exception_pending(
   env_ptr: *mut Env,
   result: *mut bool,
 ) -> napi_status {
+  crate::napi_trace("napi_is_exception_pending");
   let env = check_env!(env_ptr);
   check_arg!(env, result);
 
@@ -3639,6 +3670,7 @@ fn napi_get_and_clear_last_exception(
   env_ptr: *mut Env,
   result: *mut napi_value,
 ) -> napi_status {
+  crate::napi_trace("napi_get_and_clear_last_exception");
   let env = check_env!(env_ptr);
   check_arg!(env, result);
 
