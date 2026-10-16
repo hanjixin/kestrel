@@ -79,8 +79,8 @@ HTTP hello world, `wrk -t2 -c256`, client and server on the same machine (`bench
 |---|---|---|---|
 | node 22, 1 process | 132 k | 1.94 ms | 7.0 ms |
 | node 22 cluster, 10 processes | 229 k | 0.58 ms | 4.7 ms |
-| bun 1.3, 1 process | 275 k | 0.90 ms | 1.76 ms |
-| kestrel, 1 worker thread | 299 k | 0.79 ms | 2.56 ms |
+| bun 1.3, 1 process | 276 k | 0.89 ms | 1.76 ms |
+| kestrel, 1 worker thread | 352 k | 0.70 ms | 1.38 ms |
 
 Same, `wrk -t2 -c4096`:
 
@@ -88,8 +88,8 @@ Same, `wrk -t2 -c4096`:
 |---|---|---|---|
 | node 22, 1 process | 115 k | 16.2 ms | 463 ms |
 | node 22 cluster, 10 processes | 202 k | 19.2 ms | 26.5 ms |
-| bun 1.3, 1 process | 216 k | 17.0 ms | 42.3 ms |
-| kestrel, 1 worker thread | 232 k | 16.0 ms | 20.6 ms |
+| bun 1.3, 1 process | 225 k | 17.2 ms | 23.2 ms |
+| kestrel, 1 worker thread | 306 k | 13.1 ms | 15.2 ms |
 
 ### Linux x86_64, AMD EPYC 7542 (128 vCPU), Ubuntu 22.04, 2026-10-16
 
@@ -98,15 +98,15 @@ Servers and `wrk` on the same host over loopback (the inter-node link of the tes
 | server | 256 connections (`-t8`) | 4096 connections (`-t32`) |
 |---|---|---|
 | node, 1 process | 38 k (p99 390 ms) | 32 k (p99 34–37 ms, 330–350 timeouts) |
-| bun, 1 process | 74–85 k (p99 4.0–5.7 ms) | 54–59 k (p99 94–245 ms) |
-| kestrel, 1 worker thread | 89–99 k (p99 4.1–5.4 ms) | 58–62 k (p99 73–117 ms) |
+| bun, 1 process | 74–85 k (p99 4.4–5.7 ms) | 55–58 k (p99 119–257 ms) |
+| kestrel, 1 worker thread | 88–94 k (p99 4.0–4.1 ms) | 64–67 k (p99 105–110 ms) |
 | node cluster, 128 processes | 396–409 k | 851 k (p99 28–33 ms) |
 | bun `reusePort`, 128 processes (its default) | 456–469 k (p99 0.58 ms) | 1.30–1.37 M (p99 2.9–3.1 ms) |
-| bun `reusePort`, 32 processes (its best) | 477–483 k | 1.52–1.61 M (p99 5.3–5.8 ms) |
-| kestrel, default (`workers: "auto"` = 64 physical cores, packed accept, backend per connection) | 492–505 k (p99 0.54–0.55 ms) | 1.47–1.51 M (p99 2.6–3.2 ms) |
+| bun `reusePort`, 32 processes (its best) | 477–483 k | 1.57–1.61 M (p99 5.3–5.5 ms) |
+| kestrel, default (`workers: "auto"` = 64 physical cores, packed accept, backend per connection) | 498–511 k (p99 0.53–0.56 ms) | 1.47–1.49 M (p99 2.9 ms; one run 9.9 ms) |
 | kestrel, epoll only (`KESTREL_URING=0`) | 489–510 k (p99 0.53–0.55 ms) | 1.42–1.48 M (p99 2.6–3.3 ms) |
 | kestrel, io_uring only (`KESTREL_URING=1`) | 449–490 k | 1.49–1.54 M (p99 2.6–3.1 ms) |
-| kestrel, 32 worker threads | 482–495 k | 1.58–1.67 M (p99 2.8–7.9 ms, one run 133 ms) |
+| kestrel, 32 worker threads | 482–495 k | 1.63–1.65 M (p99 3.1–3.8 ms) |
 | kestrel, 128 worker threads, evenly spread (old default) | 413–416 k | 1.20–1.23 M |
 | kestrel raw hyper, no JS, 128 threads | 440 k | 1.39–1.40 M |
 
@@ -122,9 +122,9 @@ What this says, honestly:
 
 - Startup and memory beat Node and Bun.
 - The native tier beats V8 on call-heavy and integer-heavy code (1.6× and 1.5×; 2.8× over Node on the cold benchmark). On float loops V8's TurboFan is already at the hardware's latency floor and the native tier ties it.
-- HTTP per core: 7–9 % ahead of Bun on macOS at 256 and 4096 connections, 10–25 % ahead on Linux at 256 connections and 3–7 % ahead at 4096, with a lower p99 everywhere (at 4096 connections a third of Bun's). `perf` on the Linux node shows 85 % of the time in the kernel's TCP/epoll paths and an in-server latency max of 300 µs, so per-core HTTP is syscall-bound; the fast path got there by doing one `read` and one `write` per request. About 2.5× Node per core on Linux, 1.8–2.3× on macOS.
-- HTTP on all cores: with its defaults one kestrel process serves 1.75× a 128-process Node cluster and 1.12–1.17× Bun's documented 128-process `reusePort` setup at 4096 connections with a lower p99, and 1.06–1.09× Bun at 256 connections (a client-bound regime where every server sits between 450 k and 510 k). Matched at each runtime's best worker count (32 threads vs 32 processes), three interleaved pairs of runs gave kestrel 1.59 / 1.62 / 1.62 M against Bun 1.52 / 1.56 / 1.56 M: kestrel ahead in every pair, by 4 % on average, with a lower p99 in two of three runs and one long-tail run (35 ms) whose cause is not isolated. The spread between repeated runs on this shared host is about ±5 %, so treat single differences under that as ties. Per-core HTTP is kernel-bound on both (`perf`: 87 % of cycles in the kernel's TCP, epoll and conntrack paths), which is why one kestrel worker under 4096 connections ties one Bun process on throughput (three interleaved pairs: 57.2 / 55.9 / 61.1 k vs 58.1 / 57.7 / 57.1 k) while its p99 is lower in two of three runs (121–124 ms vs 103–247 ms); the same kernel work per request bounds both.
-- HTTP per core on macOS: the level-triggered kqueue loop is only 5 % faster than the hyper path there (299 k vs 286 k) and has a slightly longer tail at 256 connections; both are ahead of Bun.
+- HTTP per core: 27–36 % ahead of Bun on macOS at 256 and 4096 connections, 15–18 % ahead on Linux at 256 connections and 9–22 % at 4096, with a lower p99 everywhere. `perf` on the Linux node shows 85 % of the time in the kernel's TCP/epoll paths and an in-server latency max of 300 µs, so per-core HTTP is syscall-bound; the fast path got there by doing one `read` and one `write` per request. About 2.5× Node per core on Linux, 1.8–2.3× on macOS.
+- HTTP on all cores: with its defaults one kestrel process serves 1.75× a 128-process Node cluster and 1.12–1.17× Bun's documented 128-process `reusePort` setup at 4096 connections with a lower p99, and 1.06–1.09× Bun at 256 connections (a client-bound regime where every server sits between 450 k and 510 k). Matched at each runtime's best worker count (32 threads vs 32 processes), three interleaved pairs of runs gave kestrel 1.64 / 1.65 / 1.63 M against Bun 1.60 / 1.57 / 1.61 M: ahead in every pair (2–5 %) with a p99 of 3.1–3.8 ms against 5.3–5.5 ms. One kestrel worker under 4096 connections serves 63.6 / 64.1 / 66.7 k against one Bun process at 58.2 / 58.2 / 54.8 k in interleaved pairs (9–22 % ahead, p99 105–110 ms against 119–257 ms). That last case was a tie until the read path stopped zero-filling a 16 KiB buffer per request; with thousands of connections that memset streamed a cold buffer through the cache on every request, and removing it was worth 10 % on Linux and 20–30 % on macOS. The spread between repeated runs on this shared host is about ±5 %. Per-core HTTP remains kernel-bound on both runtimes (`perf`: 87 % of cycles in the kernel's TCP, epoll and conntrack paths).
+- HTTP per core on macOS: 352 k on one worker against Bun's 276 k at 256 connections, 306 k against 225 k at 4096.
 
 ## Layout
 
