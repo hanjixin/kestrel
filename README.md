@@ -101,13 +101,14 @@ Servers and `wrk` on the same host over loopback (the inter-node link of the tes
 | kestrel, 1 worker thread | 92–99 k (p99 4.9–5.4 ms) | 57–62 k (p99 73–78 ms) |
 | node cluster, 128 processes | 396–409 k | 851 k (p99 28–33 ms) |
 | bun `reusePort`, 128 processes (its default) | 456–469 k (p99 0.58 ms) | 1.30–1.37 M (p99 2.9–3.1 ms) |
-| bun `reusePort`, 32 processes (its best) | 483 k | 1.60 M (p99 5.3 ms) |
-| kestrel, default (`workers: "auto"` = 64 physical cores, packed accept) | 506–510 k (p99 0.53–0.55 ms) | 1.44–1.47 M (p99 2.6–3.3 ms) |
+| bun `reusePort`, 32 processes (its best) | 480–483 k | 1.52–1.60 M (p99 5.3–5.8 ms) |
+| kestrel, default (`workers: "auto"` = 64 physical cores, packed accept, io_uring) | 449–490 k (p99 0.54–0.59 ms) | 1.49–1.53 M (p99 2.6–3.1 ms) |
+| kestrel, same with the epoll loop (`KESTREL_URING=0`) | 489–510 k (p99 0.53–0.55 ms) | 1.42–1.48 M (p99 2.6–3.3 ms) |
+| kestrel, 32 worker threads (io_uring) | 472–486 k | 1.61–1.67 M (p99 2.8–3.3 ms) |
 | kestrel, 128 worker threads, evenly spread (old default) | 413–416 k | 1.20–1.23 M |
-| kestrel, 32 worker threads | 457–466 k | 1.56–1.64 M |
 | kestrel raw hyper, no JS, 128 threads | 440 k | 1.39–1.40 M |
 
-The fast loop has two Linux backends. io_uring (recv/send submitted in batches) serves 1.53–1.54 M at 4096 connections with 64 workers against 1.42–1.48 M for epoll, and the same 474–490 k at 256; but one loop holding 4096 connections drops from 58–62 k to 48 k on it, because on this 5.15 kernel (no multishot receive) every re-armed `recv` goes through the poll-arm and task-work path. The default therefore picks io_uring when a server runs with 4 or more workers and epoll otherwise (`KESTREL_URING=1|0` forces one).
+The fast loop has two Linux backends. io_uring (recv/send submitted in batches, with a bounded submit-and-wait while busy) is ahead when each loop holds tens of connections (4096 connections over 64 or 32 workers: +4–5 %), level with epoll when loops hold a handful (256 connections over 64 workers: 449–490 k vs 489–510 k, inside the run-to-run spread) and behind when one loop holds thousands (one worker, 4096 connections: 48 k vs 58–62 k), because on this 5.15 kernel (no multishot receive) every re-armed `recv` goes through the poll-arm and task-work path. The default therefore picks io_uring when a server runs with 4 or more workers and epoll otherwise (`KESTREL_URING=1|0` forces one).
 
 The host runs the load generator too (32 `wrk` threads on 128 vCPUs, 2 sockets, 8 NUMA nodes), so one server thread or process per vCPU is past the knee for both runtimes (`bench/remote/sweep2.sh`). Two defaults follow from that: `"auto"` means physical cores, and the acceptor packs connections onto as few workers as needed (up to 16 each, `KESTREL_PACK`) before spreading, so a few hundred mostly idle keep-alive connections do not wake 64 threads.
 
@@ -120,7 +121,7 @@ What this says, honestly:
 - Startup and memory beat Node and Bun.
 - The native tier beats V8 on call-heavy and integer-heavy code (1.6× and 1.5×; 2.8× over Node on the cold benchmark). On float loops V8's TurboFan is already at the hardware's latency floor and the native tier ties it.
 - HTTP per core: 7–9 % ahead of Bun on macOS at 256 and 4096 connections, 10–25 % ahead on Linux at 256 connections and 3–7 % ahead at 4096, with a lower p99 everywhere (at 4096 connections a third of Bun's). `perf` on the Linux node shows 85 % of the time in the kernel's TCP/epoll paths and an in-server latency max of 300 µs, so per-core HTTP is syscall-bound; the fast path got there by doing one `read` and one `write` per request. About 2.5× Node per core on Linux, 1.8–2.3× on macOS.
-- HTTP on all cores: with its defaults one kestrel process serves 1.25× a 128-process Node cluster and 1.09× Bun's documented 128-process `reusePort` setup at 256 connections, and 1.7× Node and 1.11× Bun at 4096 connections, with an equal or lower p99. Tuned against each other (32 threads vs 32 processes) the two land within a few percent at about 1.6 M, because per-core HTTP is kernel-bound on both (`perf`: 87 % of cycles in the kernel's TCP, epoll and conntrack paths at 32 workers); moving clearly past that would need an `io_uring` backend.
+- HTTP on all cores: with its defaults one kestrel process serves 1.75× a 128-process Node cluster and 1.15–1.17× Bun's documented 128-process `reusePort` setup at 4096 connections with a lower p99; at 256 connections (a client-bound regime where every server sits at 450–510 k) it is level with Bun's default, ahead by 3–10 % with the epoll loop. Matched at each runtime's best worker count (32 threads vs 32 processes) kestrel serves 1.61–1.67 M against Bun's 1.52–1.60 M with half the p99; the spread between repeated runs on this shared host is about ±5 %, so treat differences under that as ties. Per-core HTTP is kernel-bound on both (`perf`: 87 % of cycles in the kernel's TCP, epoll and conntrack paths).
 - HTTP per core on macOS: the level-triggered kqueue loop is only 5 % faster than the hyper path there (299 k vs 286 k) and has a slightly longer tail at 256 connections; both are ahead of Bun.
 
 ## Layout

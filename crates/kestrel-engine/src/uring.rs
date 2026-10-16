@@ -120,14 +120,54 @@ pub fn start() -> bool {
     let u = Rc::new(RefCell::new(Uring { ring, conns: Vec::new(), free: Vec::new(), done_tx, rxs: Vec::new(), new_rx: new_rx.clone(), dirty: false }));
     URING.with(|s| *s.borrow_mut() = Some(u));
     flog(|| "io_uring loop started".to_string());
+    let ext_arg = with_uring(|u| u.ring.params().is_feature_ext_arg()).unwrap_or(false);
     tokio::spawn(async move {
+        // Busy mode: after a turn that processed several completions, the next ones are
+        // microseconds away, so submit-and-wait in the ring itself (one syscall, bounded by
+        // BUSY_WAIT) instead of returning to epoll; every few busy turns the task yields so
+        // timers, async-handler completions and other tasks keep running. Idle mode: the
+        // Tokio-driven select below.
+        const BUSY_MIN: usize = 4;
+        const BUSY_TURNS_PER_YIELD: u32 = 4;
+        let ts = io_uring::types::Timespec::new().nsec(200_000);
+        let mut busy = false;
+        let mut busy_turns: u32 = 0;
         loop {
+            if busy && ext_arg {
+                let n = with_uring(|u| {
+                    u.dirty = false;
+                    let args = io_uring::types::SubmitArgs::new().timespec(&ts);
+                    match u.ring.submitter().submit_with_args(1, &args) {
+                        Ok(_) => {}
+                        Err(e) if matches!(e.raw_os_error(), Some(libc::ETIME) | Some(libc::EINTR) | Some(libc::EBUSY)) => {}
+                        Err(e) => flog(|| format!("io_uring submit_with_args: {e}")),
+                    }
+                })
+                .map(|_| turn_count())
+                .unwrap_or(0);
+                while let Ok((key, gen, out)) = done_rx.try_recv() {
+                    complete_async(key, gen, out);
+                }
+                while let Some(acc) = try_recv_any() {
+                    register_accepted(acc);
+                }
+                busy = n >= BUSY_MIN;
+                busy_turns += 1;
+                if !busy || busy_turns >= BUSY_TURNS_PER_YIELD {
+                    busy_turns = 0;
+                    with_uring(flush_sq);
+                    tokio::task::yield_now().await;
+                }
+                continue;
+            }
             tokio::select! {
                 guard = afd.readable() => {
                     let Ok(mut guard) = guard else { return };
-                    if !turn() {
+                    let n = turn_count();
+                    if n == 0 {
                         guard.clear_ready();
                     }
+                    busy = n >= BUSY_MIN;
                 }
                 Some((key, gen, out)) = done_rx.recv() => {
                     complete_async(key, gen, out);
@@ -145,7 +185,9 @@ pub fn start() -> bool {
             while let Some(acc) = try_recv_any() {
                 register_accepted(acc);
             }
-            with_uring(flush_sq);
+            if !busy {
+                with_uring(flush_sq);
+            }
         }
     });
     true
@@ -311,16 +353,14 @@ fn arm(u: &mut Uring, key: usize) {
     }
 }
 
-/// Process every available completion. Returns false when there was nothing to do.
-fn turn() -> bool {
+/// Process every available completion; returns how many there were.
+fn turn_count() -> usize {
     let cqes: Vec<(u64, i32)> = with_uring(|u| u.ring.completion().map(|c| (c.user_data(), c.result())).collect()).unwrap_or_default();
-    if cqes.is_empty() {
-        return false;
-    }
+    let n = cqes.len();
     for (user_data, res) in cqes {
         handle_cqe(user_data, res);
     }
-    true
+    n
 }
 
 fn take(key: usize, gen: u32) -> Option<UConn> {
