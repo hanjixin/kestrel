@@ -569,7 +569,7 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
     };
     HYPER_TX.with(|h| h.borrow_mut().insert(rid, tx.clone()));
     SERVER_TLS.with(|t| t.borrow_mut().insert(rid, crate::netimpl::TLS_ACCEPTOR.with(|a| a.borrow().is_some())));
-    let use_fast = crate::fastpath::enabled() && crate::netimpl::TLS_ACCEPTOR.with(|t| t.borrow().is_none()) && !raw_mode() && crate::fastpath::start();
+    let use_fast = crate::fastpath::enabled() && crate::netimpl::TLS_ACCEPTOR.with(|t| t.borrow().is_none()) && !raw_mode() && crate::fastpath::start_for(expected_workers.max(1));
     // The fast loop drains the receiver itself (see fastpath::Fast::rxs); it owns each
     // connection and decrements the live count when it closes.
     if use_fast {

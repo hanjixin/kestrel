@@ -139,18 +139,24 @@ impl AsRawFd for PollFd {
 enum Backend { None, Epoll, Uring }
 thread_local! { static BACKEND: std::cell::Cell<Backend> = const { std::cell::Cell::new(Backend::None) }; }
 
-/// Start this worker's fast loop (idempotent). The level-triggered epoll/kqueue loop by
-/// default; `KESTREL_URING=1` selects the io_uring backend on Linux (measured on a 5.15
-/// kernel without multishot recv: +4 % with many workers, -17 % for one worker under 4096
-/// connections, so it is opt-in until the host kernels catch up).
-pub fn start() -> bool {
+/// Start this worker's fast loop (idempotent). `workers` is the server's worker count: on
+/// Linux the io_uring backend is used when the process serves with 4 or more workers (few
+/// connections per loop, where submitting recv/send in batches wins: +4 % at 64 workers),
+/// the level-triggered epoll loop otherwise (one loop holding thousands of connections
+/// loses 17 % on io_uring without multishot receive, kernel 5.15). `KESTREL_URING=1|0`
+/// forces either.
+pub fn start_for(workers: u32) -> bool {
     match BACKEND.with(|b| b.get()) {
         Backend::None => {}
         _ => return true,
     }
     #[cfg(target_os = "linux")]
     {
-        let want = std::env::var("KESTREL_URING").map(|v| v == "1").unwrap_or(false);
+        let want = match std::env::var("KESTREL_URING").ok().as_deref() {
+            Some("1") => true,
+            Some(_) => false,
+            None => workers >= 4,
+        };
         if want && crate::uring::start() {
             BACKEND.with(|b| b.set(Backend::Uring));
             return true;
@@ -171,6 +177,10 @@ pub fn adopt(rid: u32, rx: httpimpl::ConnRx) -> bool {
         Backend::Epoll => adopt_epoll(rid, rx),
         _ => false,
     }
+}
+
+pub fn start() -> bool {
+    start_for(1)
 }
 
 fn start_epoll() -> bool {

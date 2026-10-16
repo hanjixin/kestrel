@@ -27,4 +27,28 @@ const prof = await post("Profiler.stop");
 out.push(Array.isArray(prof.result.profile.nodes));
 ws.close();
 child.kill();
+
+// --inspect-brk: the program must not have run before Runtime.runIfWaitingForDebugger.
+const brk = spawn(rt, ["--inspect-brk=0", new URL("./inspect_target.mjs", import.meta.url).pathname], { stdio: ["ignore", "pipe", "pipe"] });
+let err2 = "";
+const wsUrl2 = await new Promise((resolve, reject) => {
+  brk.stderr.on("data", (d) => { err2 += d; const m = /ws:\/\/[^\s]+/.exec(err2); if (m) resolve(m[0]); });
+  brk.on("exit", () => reject(new Error("exited: " + err2)));
+});
+await new Promise((r) => setTimeout(r, 300));
+const ws2 = new WebSocket(wsUrl2);
+await new Promise((r, j) => { ws2.onopen = r; ws2.onerror = j; });
+const pending2 = new Map(); let id2 = 0;
+ws2.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending2.has(m.id)) { pending2.get(m.id)(m); pending2.delete(m.id); } };
+const post2 = (method, params) => new Promise((r) => { const i = ++id2; pending2.set(i, r); ws2.send(JSON.stringify({ id: i, method, params })); });
+await post2("Runtime.enable"); await post2("Debugger.enable");
+const before = (await post2("Runtime.evaluate", { expression: "globalThis.answer", returnByValue: true })).result.result;
+out.push(before.type);
+await post2("Debugger.resume").catch(() => {});
+await post2("Runtime.runIfWaitingForDebugger");
+let after;
+// The first statement pauses (Debugger enabled); resume until the program has run.
+for (let i = 0; i < 40; i++) { await post2("Debugger.resume"); after = (await post2("Runtime.evaluate", { expression: "globalThis.answer", returnByValue: true })).result.result; if (after.value === 42) break; await new Promise((r) => setTimeout(r, 50)); }
+out.push(after.value);
+ws2.close(); brk.kill();
 console.log(JSON.stringify(out));

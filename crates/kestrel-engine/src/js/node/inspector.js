@@ -67,9 +67,10 @@ export function open(port = 9229, host = "127.0.0.1", wait = false) {
 }
 export function close() { ops.op_inspector_close(); }
 export function url() { return ops.op_inspector_url() ?? undefined; }
-// Blocking until a client sends Runtime.runIfWaitingForDebugger is not supported from JS
-// (the isolate thread must keep serving the session); `--inspect-brk` does it at startup.
-export function waitForDebugger() { if (!ops.op_inspector_url()) throw nodeError("ERR_INSPECTOR_NOT_ACTIVE", "Inspector is not active"); }
+export function waitForDebugger() {
+  if (!ops.op_inspector_url()) throw nodeError("ERR_INSPECTOR_NOT_ACTIVE", "Inspector is not active");
+  ops.op_inspector_wait();
+}
 export const console = globalThis.console;
 export const Network = { requestWillBeSent() {}, responseReceived() {}, loadingFinished() {}, loadingFailed() {} };
 export default { Session, open, close, url, waitForDebugger, console, Network };

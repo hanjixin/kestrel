@@ -1171,6 +1171,15 @@ pub fn op_inspector_open(state: &mut OpState, port: u16, #[string] host: &str) -
     crate::inspect_server::open(h, if host.is_empty() { "127.0.0.1" } else { host }, port, &main).map_err(|e| JsErrorBox::new("Error", format!("ERR_INSPECTOR_ALREADY_ACTIVATED: {e}")))
 }
 
+/// `inspector.waitForDebugger()`: block until a client connects and sends
+/// Runtime.runIfWaitingForDebugger (the inspector pumps sessions while blocked).
+#[op2(fast)]
+pub fn op_inspector_wait(state: &mut OpState) -> Result<(), JsErrorBox> {
+    let h = state.try_borrow::<InspectorHandle>().map(|h| h.0.clone()).ok_or_else(|| JsErrorBox::new("Error", "ERR_INSPECTOR_NOT_AVAILABLE: Inspector is not available"))?;
+    h.wait_for_session_and_break_on_next_statement();
+    Ok(())
+}
+
 #[op2]
 #[string]
 pub fn op_inspector_url() -> Option<String> {
