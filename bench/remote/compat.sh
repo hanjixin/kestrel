@@ -6,7 +6,7 @@ K=../../kestrel
 # Native addon tests: build the C addon against the local node headers, install npm addons once.
 ( sh napi/build.sh 2>/dev/null ) || echo "napi build failed"
 [ -d node_modules/sqlite3 ] || npm install --no-audit --no-fund --silent >/dev/null 2>&1
-for t in serve.ts http2.mjs vmmod.mjs http.mjs https.mjs cluster.mjs net.mjs unix.mjs fork.mjs worker.mjs esm.mjs npm.mjs realworld.cjs misc.mjs als.mjs builtins.cjs proc.cjs proc.mjs napi.cjs napi_real.cjs; do
+for t in serve.ts http2.mjs http2_stress.mjs vmmod.mjs http.mjs https.mjs cluster.mjs net.mjs unix.mjs fork.mjs worker.mjs esm.mjs npm.mjs realworld.cjs misc.mjs als.mjs builtins.cjs proc.cjs proc.mjs napi.cjs napi_real.cjs; do
   [ -f $t ] || continue
   PORT=$((5000+RANDOM%40)) timeout 90 $K $t > /tmp/k.txt 2>/tmp/k.err; ke=$?; [ $ke -ne 0 ] && head -3 /tmp/k.err
   if [ $t = serve.ts ]; then echo "$t k=$ke $(tail -c 50 /tmp/k.txt | tr -d '\n')"; continue; fi
