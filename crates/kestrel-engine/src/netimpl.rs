@@ -364,17 +364,26 @@ pub fn op_tls_server_clear() {
     TLS_ACCEPTOR.with(|t| *t.borrow_mut() = None);
 }
 
+/// rustls client config with the WebPKI roots (or no verification when `insecure`) and the
+/// given ALPN protocols.
+pub(crate) fn tls_client_config(insecure: bool, alpn: &[&str]) -> rustls::ClientConfig {
+    install_provider();
+    let root = rustls::RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
+    let mut cfg = rustls::ClientConfig::builder().with_root_certificates(root).with_no_client_auth();
+    if insecure {
+        cfg.dangerous().set_certificate_verifier(Arc::new(NoVerify));
+    }
+    cfg.alpn_protocols = alpn.iter().map(|p| p.as_bytes().to_vec()).collect();
+    cfg
+}
+
 /// TLS client connection for node:tls / https client fallbacks.
 #[op2]
 pub async fn op_tls_connect(state: Rc<RefCell<OpState>>, #[string] host: String, port: u16, #[string] servername: String, reject_unauthorized: bool) -> Result<u32, JsErrorBox> {
     install_provider();
     let s = tokio::net::TcpStream::connect((host.as_str(), port)).await.map_err(|e| net_err(e, "connect"))?;
     let _ = s.set_nodelay(true);
-    let root = rustls::RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
-    let mut cfg = rustls::ClientConfig::builder().with_root_certificates(root).with_no_client_auth();
-    if !reject_unauthorized {
-        cfg.dangerous().set_certificate_verifier(Arc::new(NoVerify));
-    }
+    let cfg = tls_client_config(!reject_unauthorized, &[]);
     let connector = tokio_rustls::TlsConnector::from(Arc::new(cfg));
     let name = rustls::pki_types::ServerName::try_from(if servername.is_empty() { host.clone() } else { servername })
         .map_err(|e| JsErrorBox::type_error(format!("bad servername: {e}")))?;

@@ -1,5 +1,6 @@
 pub mod esm2cjs;
 pub mod fastpath;
+pub mod h2impl;
 pub mod inspect_server;
 #[cfg(target_os = "linux")]
 pub mod uring;

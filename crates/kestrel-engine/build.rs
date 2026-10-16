@@ -16,6 +16,8 @@ mod procimpl;
 mod netimpl;
 #[path = "src/watchimpl.rs"]
 mod watchimpl;
+#[path = "src/h2impl.rs"]
+mod h2impl;
 
 /// Snapshot-time stub; the real fast path lives in src/fastpath.rs.
 #[allow(dead_code)]

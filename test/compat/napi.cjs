@@ -12,8 +12,13 @@ const v = addon.version(); out.push(v.major >= 22, v.napi >= 8);
 out.push(addon.stress({ o: 1 }, function (x) { return typeof x; }));
 const w = new addon.Wrapped();
 const st = new addon.Stmt(w, "select 1", function () {}); out.push(st.report, st.sql);
-let pending = 3;
-const done = () => { if (--pending === 0) { const m = { exports: {} }; process.dlopen(m, path.join(__dirname, "napi", "hello.node")); out.push(m.exports.add(1, 1)); console.log(JSON.stringify(out)); } };
-addon.later(7, function (v) { out.push("later", v, this === globalThis); done(); });
-w.addLater(2.5, function (v) { out.push("wrapped", v, this === w); done(); });
-addon.squareAsync(12).then((r) => { out.push(r); done(); });
+const finish = () => { const m = { exports: {} }; process.dlopen(m, path.join(__dirname, "napi", "hello.node")); out.push(m.exports.add(1, 1)); console.log(JSON.stringify(out)); };
+// Chained so the async-work completions are ordered deterministically (the order between two
+// independent async works is not part of the contract, in Node or here).
+addon.later(7, function (v) {
+  out.push("later", v, this === globalThis);
+  w.addLater(2.5, function (v2) {
+    out.push("wrapped", v2, this === w);
+    addon.squareAsync(12).then((r) => { out.push(r); finish(); });
+  });
+});

@@ -11,8 +11,19 @@ srv.on("stream", (stream, headers) => {
   stream.respond({ ":status": 201, "x-a": "b", "content-type": "text/plain" });
   stream.end("stream:" + headers[":method"] + ":" + headers[":scheme"]);
 });
+srv.on("stream", (stream, headers) => {
+  if (headers[":path"] !== "/page") return;
+  // Server push: promise /style.css, answer it, then the page.
+  stream.pushStream({ ":path": "/style.css" }, (err, push, promised) => {
+    if (err) { stream.respond({ ":status": 500 }); stream.end(String(err.code)); return; }
+    push.respond({ ":status": 200, "content-type": "text/css" });
+    push.end("body{}" + promised[":method"]);
+    stream.respond({ ":status": 200, "content-type": "text/html" });
+    stream.end("<p>page</p>");
+  });
+});
 srv.on("request", (req, res) => {
-  if (req.url === "/s") return;
+  if (req.url === "/s" || req.url === "/page") return;
   let body = "";
   req.setEncoding("utf8");
   req.on("data", (d) => (body += d));
@@ -36,6 +47,10 @@ const call = (session, path, method = "GET", body) => new Promise((resolve, reje
   r.on("error", reject);
   if (body) r.end(body); else r.end();
 });
+const pushed = new Promise((resolve) => client.on("stream", (ps, reqHeaders) => { let d = ""; let hdrs; ps.on("push", (h) => (hdrs = h)); ps.setEncoding("utf8"); ps.on("data", (c) => (d += c)); ps.on("end", () => resolve({ path: reqHeaders[":path"], method: reqHeaders[":method"], status: hdrs[":status"], ct: hdrs["content-type"], body: d })); }));
+out.push(await call(client, "/page"));
+out.push(await pushed);
+out.push(await new Promise((r) => client.ping((err, ms, payload) => r([err, typeof ms, payload.length]))));
 out.push(await call(client, "/s"));
 out.push(await call(client, "/r?x=1", "POST", "hello"));
 client.close();

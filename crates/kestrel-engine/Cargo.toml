@@ -6,6 +6,7 @@ license.workspace = true
 
 [build-dependencies]
 deno_core.workspace = true
+h2 = "0.4"
 kestrel-napi = { path = "../kestrel-napi" }
 deno_error = "0.7"
 bytes.workspace = true
@@ -52,6 +53,7 @@ notify = "8"
 
 [dependencies]
 kestrel-napi = { path = "../kestrel-napi" }
+h2 = "0.4"
 httparse = "1"
 httpdate = "1"
 polling = "3"
