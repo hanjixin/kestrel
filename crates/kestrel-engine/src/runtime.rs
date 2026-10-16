@@ -53,7 +53,7 @@ impl Runtime {
         let env_json = serde_json::to_string(&env.into_iter().collect::<std::collections::HashMap<_, _>>())?;
         let script = format!(
             "globalThis.__kestrel_init({argv_json}, {env_json}, {platform:?}, {pid});",
-            platform = std::env::consts::OS,
+            platform = crate::nodeimpl::node_platform(),
             pid = std::process::id(),
         );
         self.js.execute_script("ext:kestrel/init", script)?;

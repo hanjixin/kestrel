@@ -509,6 +509,15 @@ pub fn op_k_zlib(#[string] mode: &str, #[buffer] data: &[u8], level: i32) -> Res
 
 // ---------- os / process ----------
 
+/// Node's `process.platform` names: darwin/win32/linux/freebsd/..., not Rust's macos/windows.
+pub fn node_platform() -> &'static str {
+    match std::env::consts::OS {
+        "macos" => "darwin",
+        "windows" => "win32",
+        other => other,
+    }
+}
+
 #[derive(Serialize)]
 pub struct OsInfo {
     hostname: String,
@@ -571,7 +580,7 @@ pub fn op_k_os_info() -> OsInfo {
     OsInfo {
         hostname,
         arch,
-        platform: std::env::consts::OS.to_string(),
+        platform: node_platform().to_string(),
         release,
         version,
         homedir: std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")).unwrap_or_default(),
