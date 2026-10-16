@@ -55,12 +55,12 @@ type Accepted = (u32, std::net::TcpStream, Arc<std::sync::atomic::AtomicUsize>);
 
 /// Hand a port's connection receiver to this worker's fast loop. Returns false if the loop
 /// is not running (the caller then serves the receiver itself).
-fn flog(msg: impl FnOnce() -> String) {
+pub(crate) fn flog(msg: impl FnOnce() -> String) {
     static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     if *ON.get_or_init(|| std::env::var("KESTREL_FAST_LOG").is_ok()) { eprintln!("[fast w{}] {}", httpimpl::worker_id(), msg()); }
 }
 
-pub fn adopt(rid: u32, rx: httpimpl::ConnRx) -> bool {
+fn adopt_epoll(rid: u32, rx: httpimpl::ConnRx) -> bool {
     flog(|| format!("adopt rid={rid}"));
     with_fast(|fast| {
         fast.rxs.push((rid, rx));
@@ -134,8 +134,46 @@ impl AsRawFd for PollFd {
     }
 }
 
-/// Start this worker's fast loop (idempotent). Returns false if it could not start.
+/// Which backend serves this thread's fast path.
+#[derive(Clone, Copy, PartialEq)]
+enum Backend { None, Epoll, Uring }
+thread_local! { static BACKEND: std::cell::Cell<Backend> = const { std::cell::Cell::new(Backend::None) }; }
+
+/// Start this worker's fast loop (idempotent). The level-triggered epoll/kqueue loop by
+/// default; `KESTREL_URING=1` selects the io_uring backend on Linux (measured on a 5.15
+/// kernel without multishot recv: +4 % with many workers, -17 % for one worker under 4096
+/// connections, so it is opt-in until the host kernels catch up).
 pub fn start() -> bool {
+    match BACKEND.with(|b| b.get()) {
+        Backend::None => {}
+        _ => return true,
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let want = std::env::var("KESTREL_URING").map(|v| v == "1").unwrap_or(false);
+        if want && crate::uring::start() {
+            BACKEND.with(|b| b.set(Backend::Uring));
+            return true;
+        }
+    }
+    if start_epoll() {
+        BACKEND.with(|b| b.set(Backend::Epoll));
+        return true;
+    }
+    false
+}
+
+/// Hand a port's connection receiver to whichever loop runs on this thread.
+pub fn adopt(rid: u32, rx: httpimpl::ConnRx) -> bool {
+    match BACKEND.with(|b| b.get()) {
+        #[cfg(target_os = "linux")]
+        Backend::Uring => crate::uring::adopt(rid, rx),
+        Backend::Epoll => adopt_epoll(rid, rx),
+        _ => false,
+    }
+}
+
+fn start_epoll() -> bool {
     if FAST.with(|f| f.borrow().is_some()) {
         return true;
     }
@@ -487,7 +525,7 @@ fn flush(conn: &mut Conn) -> bool {
 thread_local! {
     static DATE: RefCell<(u64, String)> = const { RefCell::new((0, String::new())) };
 }
-fn date_header() -> String {
+pub(crate) fn date_header() -> String {
     let now = std::time::SystemTime::now();
     let secs = now.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     DATE.with(|d| {
@@ -512,7 +550,14 @@ fn reason(status: u16) -> &'static str {
 }
 
 fn queue_response(conn: &mut Conn, out: Outgoing, close: bool) {
-    let w = &mut conn.wbuf;
+    write_response(&mut conn.wbuf, &out, close);
+    if close {
+        conn.close_after = true;
+    }
+}
+
+/// Serialize one HTTP/1.1 response (shared with the io_uring backend).
+pub(crate) fn write_response(w: &mut Vec<u8>, out: &Outgoing, close: bool) {
     w.extend_from_slice(format!("HTTP/1.1 {} {}\r\n", out.status, reason(out.status)).as_bytes());
     let mut has_ct = false;
     let mut has_cl = false;
@@ -538,7 +583,6 @@ fn queue_response(conn: &mut Conn, out: Outgoing, close: bool) {
     w.extend_from_slice(format!("date: {}\r\n", date_header()).as_bytes());
     if close {
         w.extend_from_slice(b"connection: close\r\n");
-        conn.close_after = true;
     }
     w.extend_from_slice(b"\r\n");
     w.extend_from_slice(&out.body);

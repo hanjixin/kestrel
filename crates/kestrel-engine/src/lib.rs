@@ -1,5 +1,8 @@
 pub mod esm2cjs;
 pub mod fastpath;
+pub mod inspect_server;
+#[cfg(target_os = "linux")]
+pub mod uring;
 pub mod fetchimpl;
 pub mod httpimpl;
 pub mod netimpl;

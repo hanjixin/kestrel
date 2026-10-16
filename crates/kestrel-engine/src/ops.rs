@@ -240,7 +240,7 @@ deno_core::extension!(
         super::netimpl::op_vm_module_compile, super::netimpl::op_vm_module_requests, super::netimpl::op_vm_module_link, super::netimpl::op_vm_module_instantiate,
         super::netimpl::op_vm_module_evaluate, super::netimpl::op_vm_module_status, super::netimpl::op_vm_module_namespace, super::netimpl::op_vm_module_error,
         super::netimpl::op_vm_synthetic_create, super::netimpl::op_vm_synthetic_set_export,
-        super::netimpl::op_inspector_connect, super::netimpl::op_inspector_post, super::netimpl::op_inspector_take, super::netimpl::op_inspector_recv, super::netimpl::op_inspector_disconnect,
+        super::netimpl::op_inspector_connect, super::netimpl::op_inspector_post, super::netimpl::op_inspector_take, super::netimpl::op_inspector_recv, super::netimpl::op_inspector_disconnect, super::netimpl::op_inspector_open, super::netimpl::op_inspector_url, super::netimpl::op_inspector_close,
         op_kestrel_call0, op_kestrel_call1, op_kestrel_call2, op_kestrel_call3,
         op_kestrel_call4, op_kestrel_call5, op_kestrel_call6,
     ],

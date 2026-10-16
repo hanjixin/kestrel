@@ -67,12 +67,16 @@ pub enum CurrentReq {
 struct Current {
     id: u32,
     req: CurrentReq,
+    /// Served over TLS (for the scheme of `Request.url`).
+    tls: bool,
 }
 thread_local! {
     static ISOLATE: RefCell<Option<IsolateInfo>> = const { RefCell::new(None) };
     /// Per server id: each `Kestrel.serve` / `http.createServer` on this thread has its own handler.
     static DIRECT: RefCell<HashMap<u32, Rc<Direct>>> = RefCell::new(HashMap::new());
     static CURRENT: RefCell<Option<Current>> = const { RefCell::new(None) };
+    /// Server id -> served over TLS.
+    static SERVER_TLS: RefCell<HashMap<u32, bool>> = RefCell::new(HashMap::new());
 }
 
 /// Called by the runtime right after it creates the isolate on this thread.
@@ -117,7 +121,8 @@ pub(crate) fn dispatch(rid: u32, req: CurrentReq, body: Option<IncomingBody>, t0
             // No handler on this thread and no hyper body to queue: answer 503.
             return Step::Done(Outgoing { status: 503, headers: String::new(), body: Bytes::from_static(b"Service Unavailable") });
         };
-        return Step::Queue(IncomingReq { parts, body, respond: rtx, t0 }, rrx);
+        let tls = SERVER_TLS.with(|t| t.borrow().get(&rid).copied().unwrap_or(false));
+        return Step::Queue(IncomingReq { parts, body, respond: rtx, t0, tls }, rrx);
     };
     let id = {
         let mut st = d.state.borrow_mut();
@@ -128,10 +133,12 @@ pub(crate) fn dispatch(rid: u32, req: CurrentReq, body: Option<IncomingBody>, t0
     };
     let has_body = body.is_some();
     let mut body = body;
-    CURRENT.with(|c| *c.borrow_mut() = Some(Current { id, req }));
+    let tls = SERVER_TLS.with(|t| t.borrow().get(&rid).copied().unwrap_or(false));
+    CURRENT.with(|c| *c.borrow_mut() = Some(Current { id, req, tls }));
     // SAFETY: see call_js.
     let r = unsafe { call_js(&d, id) };
     let cur = CURRENT.with(|c| c.borrow_mut().take());
+    let cur_tls = tls;
     match r {
         Some(out) => {
             if let Some(t0) = t0 {
@@ -153,7 +160,7 @@ pub(crate) fn dispatch(rid: u32, req: CurrentReq, body: Option<IncomingBody>, t0
                 }
                 None => {
                     let parts = match cur.map(|c| c.req) { Some(CurrentReq::Parts(p)) => p, Some(CurrentReq::Raw(r)) => r.to_parts(), None => hyper::Request::new(()).into_parts().0 };
-                    hs.pending.insert(id, Pending { parts, has_body, body: body.take(), respond: Some(rtx), early: None, answered: false, t0 });
+                    hs.pending.insert(id, Pending { tls: cur_tls, parts, has_body, body: body.take(), respond: Some(rtx), early: None, answered: false, t0 });
                     Step::Pending(rrx)
                 }
             }
@@ -236,6 +243,7 @@ pub struct Outgoing {
 }
 
 pub struct IncomingReq {
+    pub tls: bool,
     pub parts: hyper::http::request::Parts,
     pub body: IncomingBody,
     pub respond: oneshot::Sender<Outgoing>,
@@ -243,6 +251,7 @@ pub struct IncomingReq {
 }
 
 struct Pending {
+    tls: bool,
     parts: hyper::http::request::Parts,
     /// False for fast-path requests, which never carry a body.
     has_body: bool,
@@ -559,6 +568,7 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
         rid
     };
     HYPER_TX.with(|h| h.borrow_mut().insert(rid, tx.clone()));
+    SERVER_TLS.with(|t| t.borrow_mut().insert(rid, crate::netimpl::TLS_ACCEPTOR.with(|a| a.borrow().is_some())));
     let use_fast = crate::fastpath::enabled() && crate::netimpl::TLS_ACCEPTOR.with(|t| t.borrow().is_none()) && !raw_mode() && crate::fastpath::start();
     // The fast loop drains the receiver itself (see fastpath::Fast::rxs); it owns each
     // connection and decrements the live count when it closes.
@@ -655,7 +665,7 @@ pub async fn accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Vec<u32>, J
     for req in batch {
         let id = hs.next_req;
         hs.next_req = hs.next_req.wrapping_add(1);
-        hs.pending.insert(id, Pending { parts: req.parts, has_body: true, body: Some(req.body), respond: Some(req.respond), early: None, answered: false, t0: req.t0 });
+        hs.pending.insert(id, Pending { tls: req.tls, parts: req.parts, has_body: true, body: Some(req.body), respond: Some(req.respond), early: None, answered: false, t0: req.t0 });
         ids.push(id);
     }
     Ok(ids)
@@ -680,8 +690,9 @@ fn with_parts<R>(state: &mut OpState, id: u32, f: impl FnOnce(&hyper::http::requ
 fn park_current(hs: &mut HttpState, id: u32) {
     let cur = CURRENT.with(|c| { let mut c = c.borrow_mut(); if c.as_ref().is_some_and(|c| c.id == id) { c.take() } else { None } });
     if let Some(c) = cur {
+        let tls = c.tls;
         let (parts, has_body) = match c.req { CurrentReq::Parts(p) => (p, true), CurrentReq::Raw(r) => (r.to_parts(), false) };
-        hs.pending.entry(id).or_insert(Pending { parts, has_body, body: None, respond: None, early: None, answered: false, t0: None });
+        hs.pending.entry(id).or_insert(Pending { tls, parts, has_body, body: None, respond: None, early: None, answered: false, t0: None });
     }
 }
 
@@ -704,8 +715,26 @@ pub fn version(state: &mut OpState, id: u32) -> u32 {
     .unwrap_or(11)
 }
 
+/// Absolute URL, as `Request.url` is in Node/WHATWG: HTTP/1 requests carry only the path,
+/// so the scheme comes from the server and the authority from the Host header.
 pub fn url(state: &mut OpState, id: u32) -> String {
-    with_parts(state, id, |p| p.uri.to_string()).unwrap_or_default()
+    let tls = with_tls(state, id);
+    with_parts(state, id, |p| {
+        if p.uri.scheme().is_some() {
+            return p.uri.to_string();
+        }
+        let host = p.headers.get(hyper::header::HOST).and_then(|h| h.to_str().ok()).unwrap_or("localhost");
+        let path = p.uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
+        format!("{}://{}{}", if tls { "https" } else { "http" }, host, path)
+    })
+    .unwrap_or_default()
+}
+
+fn with_tls(state: &mut OpState, id: u32) -> bool {
+    if let Some(t) = CURRENT.with(|c| c.borrow().as_ref().filter(|c| c.id == id).map(|c| c.tls)) {
+        return t;
+    }
+    state_mut(state).pending.get(&id).map(|p| p.tls).unwrap_or(false)
 }
 
 pub fn respond(state: &mut OpState, id: u32, status: u16, headers: &str, body: Bytes) -> Result<(), JsErrorBox> {

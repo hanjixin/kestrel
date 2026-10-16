@@ -40,6 +40,13 @@ mod fetchimpl {
     pub async fn fetch_opts(_: std::rc::Rc<std::cell::RefCell<deno_core::OpState>>, _: String, _: String, _: Vec<(String, String)>, _: Option<Vec<u8>>, _: bool, _: bool, _: bool) -> Result<FetchResp, deno_error::JsErrorBox> { unreachable!() }
 }
 
+/// Snapshot-time stub; real implementation lives in src/inspect_server.rs.
+mod inspect_server {
+    pub fn open(_: std::rc::Rc<deno_core::JsRuntimeInspector>, _: &str, _: u16, _: &str) -> std::io::Result<u16> { unreachable!() }
+    pub fn url() -> Option<String> { None }
+    pub fn close() {}
+}
+
 /// Snapshot-time stubs; real implementations live in src/httpimpl.rs.
 #[allow(dead_code)]
 mod httpimpl {

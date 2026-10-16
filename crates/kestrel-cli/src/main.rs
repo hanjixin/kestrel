@@ -13,6 +13,14 @@ fn main() {
     if args.len() < 2 {
         usage();
     }
+    // --inspect[=[host:]port], --inspect-brk[=[host:]port] (before the script).
+    while args.len() > 1 && args[1].starts_with("--inspect") {
+        let flag = args.remove(1);
+        let (name, val) = match flag.split_once('=') { Some((n, v)) => (n.to_string(), v.to_string()), None => (flag.clone(), "127.0.0.1:9229".to_string()) };
+        let val = if val.contains(':') { val } else { format!("127.0.0.1:{val}") };
+        let spec = if name == "--inspect-brk" { format!("brk,{val}") } else { val };
+        std::env::set_var("KESTREL_INSPECT", spec);
+    }
     if args[1] == "run" {
         args.remove(1);
         if args.len() < 2 {

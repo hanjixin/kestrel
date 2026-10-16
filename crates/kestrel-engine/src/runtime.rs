@@ -133,6 +133,8 @@ pub fn run_file_with_isolate_handle(path: &Path, argv: &[String], handle: std::s
 pub fn run_file(path: &Path, argv: &[String]) -> Result<i32> {
     init_v8_once();
     let _ = crate::httpimpl::MAIN.set((path.to_path_buf(), argv.to_vec()));
+    // `--inspect[-brk]=[host:]port` from the CLI.
+    let inspect = std::env::var("KESTREL_INSPECT").ok();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .max_io_events_per_tick(8192)
@@ -140,6 +142,19 @@ pub fn run_file(path: &Path, argv: &[String]) -> Result<i32> {
         .build()?;
     rt.block_on(async {
         let mut r = Runtime::new();
+        if let Some(spec) = inspect {
+            let (brk, addr) = match spec.strip_prefix("brk,") { Some(a) => (true, a), None => (false, spec.as_str()) };
+            let (host, port) = match addr.rsplit_once(':') { Some((h, p)) => (h.to_string(), p.parse().unwrap_or(9229)), None => ("127.0.0.1".to_string(), addr.parse().unwrap_or(9229)) };
+            let main = std::fs::canonicalize(path).unwrap_or(path.to_path_buf()).to_string_lossy().to_string();
+            match crate::inspect_server::open(r.js.inspector(), if host.is_empty() { "127.0.0.1" } else { &host }, port, &main) {
+                Ok(_) => {
+                    if brk {
+                        r.js.inspector().wait_for_session_and_break_on_next_statement();
+                    }
+                }
+                Err(e) => eprintln!("Starting inspector on {host}:{port} failed: {e}"),
+            }
+        }
         r.run_main(path, argv).await
     })
 }

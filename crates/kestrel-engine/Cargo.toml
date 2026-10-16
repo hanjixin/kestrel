@@ -99,3 +99,6 @@ oxc_span.workspace = true
 oxc_semantic.workspace = true
 oxc_transformer.workspace = true
 oxc_codegen.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+io-uring = "0.7"

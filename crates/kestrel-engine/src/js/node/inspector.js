@@ -1,6 +1,6 @@
 // node:inspector — in-process Chrome DevTools Protocol sessions on this isolate's V8
-// inspector (Runtime, Debugger, Profiler, HeapProfiler domains). No WebSocket listener:
-// `open()` is a no-op and `url()` is undefined, so external debuggers cannot attach.
+// inspector (Runtime, Debugger, Profiler, HeapProfiler domains), and `open()`/`--inspect`
+// for external debuggers (chrome://inspect, VS Code) over a WebSocket endpoint.
 import { EventEmitter } from "ext:kestrel/node/events.js";
 import { ops, nodeError } from "ext:kestrel/internal.js";
 
@@ -58,10 +58,18 @@ export class Session extends EventEmitter {
     for (const cb of pending) cb(nodeError("ERR_INSPECTOR_CLOSED", "Session was closed"));
   }
 }
-export function open() {}
-export function close() {}
-export function url() { return undefined; }
-export function waitForDebugger() { throw nodeError("ERR_INSPECTOR_NOT_ACTIVE", "Inspector is not active"); }
+export function open(port = 9229, host = "127.0.0.1", wait = false) {
+  if (typeof port !== "number") throw nodeError("ERR_INVALID_ARG_TYPE", 'The "port" argument must be of type number', TypeError);
+  if (ops.op_inspector_url()) throw nodeError("ERR_INSPECTOR_ALREADY_ACTIVATED", "Inspector is already activated. Close it with inspector.close() before activating it again.");
+  ops.op_inspector_open(port | 0, host === undefined || host === null ? "127.0.0.1" : String(host));
+  if (wait) waitForDebugger();
+  return { [Symbol.dispose]() { close(); } };
+}
+export function close() { ops.op_inspector_close(); }
+export function url() { return ops.op_inspector_url() ?? undefined; }
+// Blocking until a client sends Runtime.runIfWaitingForDebugger is not supported from JS
+// (the isolate thread must keep serving the session); `--inspect-brk` does it at startup.
+export function waitForDebugger() { if (!ops.op_inspector_url()) throw nodeError("ERR_INSPECTOR_NOT_ACTIVE", "Inspector is not active"); }
 export const console = globalThis.console;
 export const Network = { requestWillBeSent() {}, responseReceived() {}, loadingFinished() {}, loadingFailed() {} };
 export default { Session, open, close, url, waitForDebugger, console, Network };

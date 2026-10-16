@@ -93,7 +93,9 @@ export class Server extends EventEmitter {
             const hdrs = {}; const raw = [];
             for (const [k, v] of request.headers) { hdrs[k] = v; raw.push(k, v); }
             const hasBody = request.method !== "GET" && request.method !== "HEAD";
-            const req = new IncomingMessage({ method: request.method, url: request.url, headers: hdrs, rawHeaders: raw, bodyPromise: hasBody ? respondOps.op_kestrel_http_body(id) : null });
+            // Node's req.url is the request target (path + query); Request.url is absolute.
+            const u = new URL(request.url);
+            const req = new IncomingMessage({ method: request.method, url: u.pathname + u.search, headers: hdrs, rawHeaders: raw, bodyPromise: hasBody ? respondOps.op_kestrel_http_body(id) : null });
             const res = new ServerResponse(req, (status, headersFlat, body) => resolve(new globalThis.Response(body, { status, headers: { "x-kestrel-raw": "1" }, __raw: headersFlat })));
             self.emit("request", req, res);
           });

@@ -1163,6 +1163,25 @@ pub async fn op_inspector_recv(id: u32) -> Vec<String> {
     }
 }
 
+/// `inspector.open(port, host)`: start the DevTools endpoint; returns the bound port.
+#[op2(fast)]
+pub fn op_inspector_open(state: &mut OpState, port: u16, #[string] host: &str) -> Result<u16, JsErrorBox> {
+    let h = state.try_borrow::<InspectorHandle>().map(|h| h.0.clone()).ok_or_else(|| JsErrorBox::new("Error", "ERR_INSPECTOR_NOT_AVAILABLE: Inspector is not available"))?;
+    let main = crate::httpimpl::MAIN.get().map(|(p, _)| p.to_string_lossy().to_string()).unwrap_or_default();
+    crate::inspect_server::open(h, if host.is_empty() { "127.0.0.1" } else { host }, port, &main).map_err(|e| JsErrorBox::new("Error", format!("ERR_INSPECTOR_ALREADY_ACTIVATED: {e}")))
+}
+
+#[op2]
+#[string]
+pub fn op_inspector_url() -> Option<String> {
+    crate::inspect_server::url()
+}
+
+#[op2(fast)]
+pub fn op_inspector_close() {
+    crate::inspect_server::close();
+}
+
 #[op2(fast)]
 pub fn op_inspector_disconnect(id: u32) {
     if let Some(s) = INSP.with(|s| s.borrow_mut().remove(&id)) {
