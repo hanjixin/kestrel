@@ -794,7 +794,9 @@ pub async fn body(state: Rc<RefCell<OpState>>, id: u32) -> Result<Vec<u8>, JsErr
             let mut st = state.borrow_mut();
             let hs = state_mut(&mut st);
             park_current(hs, id);
-            let p = hs.pending.get_mut(&id).ok_or_else(|| JsErrorBox::type_error("request body already consumed"))?;
+            // Slot gone: the request already completed; treat the body as empty rather than
+            // erroring (a consumer may read after the response is done).
+            let Some(p) = hs.pending.get_mut(&id) else { break None };
             if let Some(b) = p.body.take() { break Some(b); }
             if p.answered || !p.has_body { break None; }
         }

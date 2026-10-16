@@ -9,19 +9,30 @@ export const STATUS_CODES = { 100: "Continue", 101: "Switching Protocols", 102: 
 
 export class IncomingMessage extends Readable {
   constructor(opts) {
-    super({ read() {} });
+    super({});
     this.method = opts.method; this.url = opts.url; this.headers = opts.headers; this.rawHeaders = opts.rawHeaders || [];
     this.httpVersion = "1.1"; this.httpVersionMajor = 1; this.httpVersionMinor = 1; this.complete = false; this.aborted = false;
     this.statusCode = opts.statusCode; this.statusMessage = opts.statusMessage;
-    // `readable: false` so `on-finished` (used by express's finalhandler to defer error/404
-    // responses until the request is drained) treats a bodyless request as finished at once;
-    // the body is delivered via the body promise, not by reading this fake socket.
-    this.socket = opts.socket || { remoteAddress: "127.0.0.1", remotePort: 0, encrypted: false, readable: false, writable: true, setTimeout() {}, destroy() {}, on() {}, once() {}, removeListener() {}, end() {} };
+    // Node-like socket stub. `on-finished` (express's finalhandler) decides a request is
+    // finished from `complete && !readable` on the message itself: a bodyless GET ends its
+    // Readable (readable=false, complete=true) so finalhandler responds, while a POST stays
+    // readable until its body is read so body parsers still read it.
+    this.socket = opts.socket || { remoteAddress: "127.0.0.1", remotePort: 0, encrypted: false, readable: true, writable: true, setTimeout() {}, destroy() {}, on() {}, once() {}, removeListener() {}, end() {} };
     this.connection = this.socket;
     this.trailers = {}; this.rawTrailers = [];
+    this._bodyFetch = null; this._bodyStarted = false;
     if (opts.body) { this.push(Buffer.from(opts.body)); this.push(null); this.complete = true; }
+    else if (opts.bodyFetch) { this._bodyFetch = opts.bodyFetch; } // read lazily in _read
     else if (opts.bodyPromise) opts.bodyPromise.then((b) => { if (b && b.length) this.push(Buffer.from(b)); this.push(null); this.complete = true; }, (e) => this.destroy(e));
     else { this.push(null); this.complete = true; }
+  }
+  // Lazy body: fetch only when the consumer actually reads (Node semantics; also what
+  // raw-body 3.x / body-parser 2.x expect). Never reading leaves the body op uncalled.
+  _read() {
+    if (this._bodyFetch && !this._bodyStarted) {
+      this._bodyStarted = true;
+      this._bodyFetch().then((b) => { if (b && b.length) this.push(Buffer.from(b)); this.push(null); this.complete = true; }, (e) => this.destroy(e));
+    }
   }
   setTimeout(ms, cb) { if (cb) this.once("timeout", cb); return this; }
 }
@@ -98,7 +109,7 @@ export class Server extends EventEmitter {
             const hasBody = request.method !== "GET" && request.method !== "HEAD";
             // Node's req.url is the request target (path + query); Request.url is absolute.
             const u = new URL(request.url);
-            const req = new IncomingMessage({ method: request.method, url: u.pathname + u.search, headers: hdrs, rawHeaders: raw, bodyPromise: hasBody ? respondOps.op_kestrel_http_body(id) : null });
+            const req = new IncomingMessage({ method: request.method, url: u.pathname + u.search, headers: hdrs, rawHeaders: raw, bodyFetch: hasBody ? () => respondOps.op_kestrel_http_body(id) : null });
             const res = new ServerResponse(req, (status, headersFlat, body) => resolve(new globalThis.Response(body, { status, headers: { "x-kestrel-raw": "1" }, __raw: headersFlat })));
             self.emit("request", req, res);
           });

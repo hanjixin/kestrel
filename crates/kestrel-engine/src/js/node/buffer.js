@@ -209,6 +209,16 @@ export const SlowBuffer = Buffer;
 export const constants = { MAX_LENGTH: kMaxLength, MAX_STRING_LENGTH: kStringMaxLength };
 export const INSPECT_MAX_BYTES = 50;
 export const kMaxLength_ = kMaxLength;
+// Node's Buffer is a function whose static methods (isBuffer, from, alloc, concat, ...) are
+// enumerable; libraries copy them with `for (key in Buffer)` (e.g. safer-buffer, used by
+// iconv-lite). An ES class makes statics non-enumerable, which would drop them, so make them
+// enumerable to match Node.
+for (const k of Object.getOwnPropertyNames(Buffer)) {
+  if (k === "length" || k === "name" || k === "prototype") continue;
+  const d = Object.getOwnPropertyDescriptor(Buffer, k);
+  if (d && d.configurable && d.enumerable === false) Object.defineProperty(Buffer, k, { ...d, enumerable: true });
+}
+
 export { kMaxLength, kStringMaxLength };
 export function transcode(source, from, to) { return Buffer.from(Buffer.from(source).toString(from), to); }
 export function isUtf8(u8) { try { new TextDecoder("utf-8", { fatal: true }).decode(u8); return true; } catch { return false; } }
