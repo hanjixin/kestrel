@@ -249,10 +249,10 @@ deno_core::extension!(
         op_kestrel_call4, op_kestrel_call5, op_kestrel_call6,
     ],
     esm_entry_point = "ext:kestrel/bootstrap.js",
-    esm = [dir "src/js", "bootstrap.js", "globals.js", "internal.js",
+    esm = [dir "src/js", "bootstrap.js", "globals.js", "web_streams.js", "internal.js",
         "node/assert.js", "node/buffer.js", "node/child_process.js", "node/crypto.js", "node/events.js",
         "node/fs.js", "node/fs_promises.js", "node/http.js", "node/https.js", "node/module.js", "node/net.js",
         "node/os.js", "node/path.js", "node/path_posix.js", "node/process.js", "node/querystring.js",
-        "node/readline.js", "node/stream.js", "node/string_decoder.js", "node/timers.js", "node/timers_promises.js",
+        "node/readline.js", "node/stream.js", "node/string_decoder.js", "node/stream_web.js", "node/diagnostics_channel.js", "node/console.js", "node/timers.js", "node/timers_promises.js",
         "node/tty.js", "node/url.js", "node/util.js", "node/util_types.js", "node/worker_threads.js", "node/zlib.js", "node/tls.js", "node/dns.js", "node/dns_promises.js", "node/dgram.js", "node/perf_hooks.js", "node/v8.js", "node/vm.js", "node/cluster.js", "node/constants.js", "node/sys.js", "node/async_hooks.js", "node/inspector.js", "node/inspector_promises.js", "node/http2.js"],
 );

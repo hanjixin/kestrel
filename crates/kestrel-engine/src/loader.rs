@@ -21,6 +21,12 @@ fn referrer_path(referrer: &str) -> PathBuf {
             return p;
         }
     }
+    // CommonJS modules are compiled with a bare absolute path as their script origin (so stack
+    // traces read like Node's), so a dynamic import() from CJS gives that bare path as the
+    // referrer. Use it directly instead of falling back to `__main__`.
+    if referrer.starts_with('/') {
+        return PathBuf::from(referrer);
+    }
     std::env::current_dir().map(|d| d.join("__main__")).unwrap_or_else(|_| PathBuf::from("/__main__"))
 }
 

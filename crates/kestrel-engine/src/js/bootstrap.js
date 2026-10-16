@@ -1,6 +1,7 @@
 // Kestrel runtime bootstrap. Runs once at snapshot time; everything installed here is
 // available to user modules. Order matters: globals first, then node:* modules.
 import "ext:kestrel/globals.js";
+import "ext:kestrel/web_streams.js";
 import { core, ops, utf8Decode, utf8Encode, nodeError, kEmpty } from "ext:kestrel/internal.js";
 import assert from "ext:kestrel/node/assert.js";
 import buffer, { Buffer, Blob, File } from "ext:kestrel/node/buffer.js";
@@ -19,6 +20,9 @@ import querystring from "ext:kestrel/node/querystring.js";
 import readline from "ext:kestrel/node/readline.js";
 import stream from "ext:kestrel/node/stream.js";
 import string_decoder from "ext:kestrel/node/string_decoder.js";
+import streamWeb from "ext:kestrel/node/stream_web.js";
+import diagnosticsChannel from "ext:kestrel/node/diagnostics_channel.js";
+import consoleMod from "ext:kestrel/node/console.js";
 import timers from "ext:kestrel/node/timers.js";
 import timersPromises from "ext:kestrel/node/timers_promises.js";
 import tty from "ext:kestrel/node/tty.js";
@@ -48,7 +52,7 @@ import http2 from "ext:kestrel/node/http2.js";
 
 const builtins = {
   assert, "assert/strict": assert.strict, buffer, child_process, crypto, events, fs, "fs/promises": fsPromises, http, https, module, net, os, path, "path/posix": path,
-  process: globalThis.process, querystring, readline, stream, "stream/promises": stream.promises, string_decoder, timers, "timers/promises": timersPromises, tty, url, util, "util/types": utilTypes, worker_threads, zlib,
+  process: globalThis.process, querystring, readline, stream, "stream/promises": stream.promises, string_decoder, "stream/web": streamWeb, diagnostics_channel: diagnosticsChannel, console: consoleMod, timers, "timers/promises": timersPromises, tty, url, util, "util/types": utilTypes, worker_threads, zlib,
   tls, dns, "dns/promises": dnsPromises, dgram, perf_hooks, v8, vm, cluster, constants, sys: util, async_hooks, inspector, "inspector/promises": inspectorPromises, http2,
 };
 _registerBuiltins(builtins);
