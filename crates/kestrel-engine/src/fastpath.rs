@@ -607,13 +607,9 @@ fn process_buffer(conn: &mut Conn, key: usize) -> bool {
             }
             return false;
         }
-        let raw = RawReq {
-            method: method.to_string(),
-            path: path.to_string(),
-            headers: conn.rbuf[..parsed].to_vec(),
-        };
+        let raw = raw_req(&conn.rbuf[..parsed], method, path);
         conn.rbuf.drain(..parsed);
-        flog(|| format!("dispatch rid={} {}", conn.rid, raw.path));
+        flog(|| format!("dispatch rid={} {}", conn.rid, raw.path()));
         let step = httpimpl::dispatch_raw(conn.rid, raw);
         match step {
             Step::Done(out) => {
@@ -697,17 +693,18 @@ fn flush(conn: &mut Conn) -> bool {
 thread_local! {
     static DATE: RefCell<(u64, String)> = const { RefCell::new((0, String::new())) };
 }
-pub(crate) fn date_header() -> String {
+/// Append `date: <IMF-fixdate>\r\n`, re-rendered once per second.
+pub(crate) fn push_date(w: &mut Vec<u8>) {
     let now = std::time::SystemTime::now();
     let secs = now.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     DATE.with(|d| {
         let mut d = d.borrow_mut();
         if d.0 != secs || d.1.is_empty() {
             d.0 = secs;
-            d.1 = httpdate::fmt_http_date(now);
+            d.1 = format!("date: {}\r\n", httpdate::fmt_http_date(now));
         }
-        d.1.clone()
-    })
+        w.extend_from_slice(d.1.as_bytes());
+    });
 }
 
 fn reason(status: u16) -> &'static str {
@@ -728,9 +725,38 @@ fn queue_response(conn: &mut Conn, out: Outgoing, close: bool) {
     }
 }
 
-/// Serialize one HTTP/1.1 response (shared with the io_uring backend).
+/// Build the request record from the parsed header block: `method`/`path` are `&str`s
+/// into `block` (httparse returns slices of the input), stored as ranges.
+pub(crate) fn raw_req(block: &[u8], method: &str, path: &str) -> RawReq {
+    let base = block.as_ptr() as usize;
+    let range = |s: &str| {
+        let start = (s.as_ptr() as usize).wrapping_sub(base);
+        if start <= block.len() && start + s.len() <= block.len() { start..start + s.len() } else { 0..0 }
+    };
+    let (m, p) = (range(method), range(path));
+    RawReq { headers: block.to_vec(), method: m, path: p }
+}
+
+fn push_num(w: &mut Vec<u8>, mut n: usize) {
+    let mut buf = [0u8; 20];
+    let mut i = buf.len();
+    loop {
+        i -= 1;
+        buf[i] = b'0' + (n % 10) as u8;
+        n /= 10;
+        if n == 0 { break; }
+    }
+    w.extend_from_slice(&buf[i..]);
+}
+
+/// Serialize one HTTP/1.1 response (shared with the io_uring backend); no allocations
+/// beyond growing `w`.
 pub(crate) fn write_response(w: &mut Vec<u8>, out: &Outgoing, close: bool) {
-    w.extend_from_slice(format!("HTTP/1.1 {} {}\r\n", out.status, reason(out.status)).as_bytes());
+    w.extend_from_slice(b"HTTP/1.1 ");
+    push_num(w, out.status as usize);
+    w.push(b' ');
+    w.extend_from_slice(reason(out.status).as_bytes());
+    w.extend_from_slice(b"\r\n");
     let mut has_ct = false;
     let mut has_cl = false;
     if !out.headers.is_empty() {
@@ -750,9 +776,11 @@ pub(crate) fn write_response(w: &mut Vec<u8>, out: &Outgoing, close: bool) {
         w.extend_from_slice(b"content-type: text/plain;charset=UTF-8\r\n");
     }
     if !has_cl {
-        w.extend_from_slice(format!("content-length: {}\r\n", out.body.len()).as_bytes());
+        w.extend_from_slice(b"content-length: ");
+        push_num(w, out.body.len());
+        w.extend_from_slice(b"\r\n");
     }
-    w.extend_from_slice(format!("date: {}\r\n", date_header()).as_bytes());
+    push_date(w);
     if close {
         w.extend_from_slice(b"connection: close\r\n");
     }

@@ -438,7 +438,7 @@ fn process_buffer(c: &mut UConn, key: usize) -> bool {
         if content_length > 0 || chunked || upgrade || expect || method == "CONNECT" {
             return handover_now(c, key);
         }
-        let raw = RawReq { method: method.to_string(), path: path.to_string(), headers: buf[..parsed].to_vec() };
+        let raw = crate::fastpath::raw_req(&buf[..parsed], method, path);
         // Consume the request; keep any pipelined bytes at the front.
         c.rbuf.copy_within(parsed..c.rlen, 0);
         c.rlen -= parsed;

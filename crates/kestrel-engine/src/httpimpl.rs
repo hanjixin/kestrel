@@ -38,14 +38,21 @@ struct IsolateInfo {
 /// when the handler goes async.
 /// A request as parsed by the fast path: materialised into `Parts` only on access.
 pub struct RawReq {
-    pub method: String,
-    pub path: String,
-    /// Request line + header block as received.
+    /// Request line + header block as received; method and path are ranges into it
+    /// (one allocation per request instead of three).
     pub headers: Vec<u8>,
+    pub method: std::ops::Range<usize>,
+    pub path: std::ops::Range<usize>,
 }
 impl RawReq {
+    pub fn method(&self) -> &str {
+        std::str::from_utf8(&self.headers[self.method.clone()]).unwrap_or("GET")
+    }
+    pub fn path(&self) -> &str {
+        std::str::from_utf8(&self.headers[self.path.clone()]).unwrap_or("/")
+    }
     fn to_parts(&self) -> hyper::http::request::Parts {
-        let mut b = hyper::Request::builder().method(self.method.as_str()).uri(self.path.as_str());
+        let mut b = hyper::Request::builder().method(self.method()).uri(self.path());
         let mut hdrs = [httparse::EMPTY_HEADER; 48];
         let mut req = httparse::Request::new(&mut hdrs);
         if req.parse(&self.headers).is_ok() {
