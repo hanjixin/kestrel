@@ -10,6 +10,19 @@ How it gets both:
 
 The name is a placeholder.
 
+## Install
+
+Prebuilt binaries are attached to every [release](https://github.com/hanjixin/kestrel/releases): Linux x86_64 and aarch64 (glibc 2.31+, so Ubuntu 20.04+ / Debian 11+), macOS Apple Silicon and Intel.
+
+```sh
+# pick one of: x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu, aarch64-apple-darwin, x86_64-apple-darwin
+TARGET=aarch64-apple-darwin
+curl -L https://github.com/hanjixin/kestrel/releases/latest/download/kestrel-$TARGET.tar.gz | tar xz
+./kestrel-$TARGET/kestrel app.ts
+```
+
+Each archive ships with a `.sha256` file next to it. Releases are built by `.github/workflows/release.yml` whenever a `v*` tag is pushed.
+
 ## Build and run
 
 ```sh
