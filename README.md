@@ -27,7 +27,7 @@ KESTREL_PACK=16 ...                                                # connections
 ./target/release/kestrel --inspect[=[host:]port] app.js            # DevTools endpoint (chrome://inspect, VS Code); --inspect-brk pauses on the first line
 ```
 
-A Linux build is produced in Docker (`target-linux/` for arm64, `target-linux-amd64/` for x86_64; see `bench/remote/run.sh`).
+A Linux build is produced in Docker with the `rust:bullseye` image (glibc 2.31, so the binary runs on Ubuntu 20.04+ without loader warnings): `docker run --rm --platform linux/amd64 -v $PWD:/src -w /src rust:bullseye cargo build --release --target-dir /src/target-linux-amd64`; see `bench/remote/run.sh` for the upload and benchmark steps.
 
 ## Compatibility status
 
