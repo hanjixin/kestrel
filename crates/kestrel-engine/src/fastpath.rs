@@ -258,8 +258,174 @@ fn drain(poller: &Poller, events: &mut Events, mut guard: Option<&mut tokio::io:
             return false;
         }
         let evs: Vec<Event> = events.iter().collect();
+        #[cfg(target_os = "linux")]
+        {
+            if batch_io_enabled() && evs.len() >= BATCH_MIN && handle_events_batched(&evs) {
+                continue;
+            }
+        }
         for ev in evs {
             handle_event(ev);
+        }
+    }
+    true
+}
+
+/// Ready connections per epoll wake-up from which the batched io_uring I/O path is used.
+#[cfg(target_os = "linux")]
+const BATCH_MIN: usize = 32;
+
+/// `KESTREL_BATCH_IO=1`: epoll for readiness, io_uring for the reads and writes of each
+/// wake-up in two submissions. Measured on a 5.15 kernel it does not pay: one worker under
+/// 4096 connections went from 58 k to 54–56 k with a longer tail (the per-op setup inside
+/// io_uring costs about what the syscall it replaces costs), so it is opt-in for newer kernels.
+#[cfg(target_os = "linux")]
+fn batch_io_enabled() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("KESTREL_BATCH_IO").map(|v| v == "1").unwrap_or(false))
+}
+
+#[cfg(target_os = "linux")]
+thread_local! {
+    /// Ring used synchronously for batched I/O (never waits: every op carries MSG_DONTWAIT).
+    static BATCH_RING: RefCell<Option<Option<io_uring::IoUring>>> = const { RefCell::new(None) };
+}
+
+/// Batched I/O for a wake-up with many ready connections: epoll says which sockets are
+/// ready, then all their `recv`s go into one `io_uring_enter`, the handlers run, and all
+/// the `send`s go into a second one, instead of one `read` and one `write` syscall per
+/// connection. Every SQE carries MSG_DONTWAIT, so nothing is ever left in flight: a socket
+/// that turns out not to be ready completes with -EAGAIN at once (we keep level-triggered
+/// interest, so it is reported again). Falls back (returns false) when no ring is available.
+#[cfg(target_os = "linux")]
+fn handle_events_batched(evs: &[Event]) -> bool {
+    use io_uring::{opcode, types};
+    use std::os::fd::AsRawFd;
+    let ok = BATCH_RING.with(|r| {
+        let mut r = r.borrow_mut();
+        if r.is_none() {
+            let ring = io_uring::IoUring::new(4096).ok().filter(|rg| rg.params().is_feature_nodrop());
+            flog(|| format!("batched io_uring path: {}", if ring.is_some() { "on" } else { "unavailable" }));
+            *r = Some(ring);
+        }
+        r.as_ref().unwrap().is_some()
+    });
+    if !ok {
+        return false;
+    }
+    for chunk in evs.chunks(2048) {
+        // Take every connection of the chunk out of the table; buffers stay put on the heap.
+        let mut taken: Vec<(usize, Conn, bool, bool)> = Vec::with_capacity(chunk.len());
+        for ev in chunk {
+            if let Some(c) = with_fast(|fast| fast.conns.get_mut(ev.key).and_then(|c| c.take())).flatten() {
+                taken.push((ev.key, c, ev.readable, ev.writable));
+            }
+        }
+        let mut alive = vec![true; taken.len()];
+        let mut starts = vec![usize::MAX; taken.len()];
+        let mut results = vec![i32::MIN; taken.len()];
+        // Phase 1: all recvs.
+        let n_recv = BATCH_RING.with(|r| {
+            let mut r = r.borrow_mut();
+            let ring = r.as_mut().unwrap().as_mut().unwrap();
+            let mut n = 0usize;
+            for (i, (_, conn, readable, _)) in taken.iter_mut().enumerate() {
+                if !*readable || conn.waiting {
+                    continue;
+                }
+                let start = conn.rbuf.len();
+                conn.rbuf.resize(start + READ_CHUNK, 0);
+                starts[i] = start;
+                let ptr = conn.rbuf[start..].as_mut_ptr();
+                let e = opcode::Recv::new(types::Fd(conn.stream.as_raw_fd()), ptr, READ_CHUNK as u32).flags(libc::MSG_DONTWAIT).build().user_data(i as u64);
+                // SAFETY: rbuf is not touched until the completion below is collected.
+                if unsafe { ring.submission().push(&e) }.is_err() {
+                    conn.rbuf.truncate(start);
+                    starts[i] = usize::MAX;
+                    continue;
+                }
+                n += 1;
+            }
+            if n > 0 {
+                let mut got = 0;
+                while got < n {
+                    match ring.submit_and_wait(n - got) {
+                        Ok(_) => {}
+                        Err(e) if e.raw_os_error() == Some(libc::EINTR) => continue,
+                        Err(_) => break,
+                    }
+                    for cqe in ring.completion() {
+                        let i = cqe.user_data() as usize;
+                        if i < results.len() { results[i] = cqe.result(); }
+                        got += 1;
+                    }
+                }
+            }
+            n
+        });
+        let _ = n_recv;
+        for (i, (key, conn, _, _)) in taken.iter_mut().enumerate() {
+            let start = starts[i];
+            if start == usize::MAX {
+                continue;
+            }
+            let res = results[i];
+            if res == i32::MIN || res == -libc::EAGAIN || res == -libc::EINTR {
+                conn.rbuf.truncate(start);
+            } else if res <= 0 {
+                conn.rbuf.truncate(start);
+                alive[i] = false;
+            } else {
+                conn.rbuf.truncate(start + res as usize);
+                alive[i] = process_buffer(conn, *key);
+            }
+        }
+        // Phase 2: all sends.
+        let mut sresults = vec![i32::MIN; taken.len()];
+        BATCH_RING.with(|r| {
+            let mut r = r.borrow_mut();
+            let ring = r.as_mut().unwrap().as_mut().unwrap();
+            let mut n = 0usize;
+            for (i, (_, conn, _, _)) in taken.iter().enumerate() {
+                if !alive[i] || conn.wbuf.is_empty() {
+                    continue;
+                }
+                let e = opcode::Send::new(types::Fd(conn.stream.as_raw_fd()), conn.wbuf.as_ptr(), conn.wbuf.len() as u32).flags(libc::MSG_DONTWAIT | libc::MSG_NOSIGNAL).build().user_data(i as u64);
+                // SAFETY: wbuf is not touched until the completion below is collected.
+                if unsafe { ring.submission().push(&e) }.is_ok() {
+                    n += 1;
+                }
+            }
+            if n > 0 {
+                let mut got = 0;
+                while got < n {
+                    match ring.submit_and_wait(n - got) {
+                        Ok(_) => {}
+                        Err(e) if e.raw_os_error() == Some(libc::EINTR) => continue,
+                        Err(_) => break,
+                    }
+                    for cqe in ring.completion() {
+                        let i = cqe.user_data() as usize;
+                        if i < sresults.len() { sresults[i] = cqe.result(); }
+                        got += 1;
+                    }
+                }
+            }
+        });
+        for (i, (key, mut conn, _, _)) in taken.into_iter().enumerate() {
+            let mut a = alive[i];
+            let r = sresults[i];
+            if a && r != i32::MIN {
+                if r > 0 {
+                    conn.wbuf.drain(..(r as usize).min(conn.wbuf.len()));
+                } else if r < 0 && r != -libc::EAGAIN && r != -libc::EINTR {
+                    a = false;
+                }
+            }
+            if a && conn.wbuf.is_empty() && conn.close_after {
+                a = false;
+            }
+            finish(conn, key, a);
         }
     }
     true

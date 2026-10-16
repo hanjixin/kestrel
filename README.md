@@ -24,6 +24,7 @@ KESTREL_V8_FLAGS="..." ...                                         # extra raw V
 KESTREL_FASTPATH=0 ...                                             # serve everything through hyper (no level-triggered fast loop)
 KESTREL_URING=1|0 ...                                              # Linux: force the io_uring or the epoll fast loop (default: io_uring with 4+ workers)
 KESTREL_PACK=16 ...                                                # connections packed per worker before the acceptor spreads (0 = least-loaded only)
+KESTREL_BATCH_IO=1 ...                                             # Linux: epoll readiness + batched io_uring reads/writes per wake-up (no gain on 5.15 kernels)
 ./target/release/kestrel --inspect[=[host:]port] app.js            # DevTools endpoint (chrome://inspect, VS Code); --inspect-brk pauses on the first line
 ```
 
