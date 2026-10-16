@@ -82,6 +82,11 @@ thread_local! {
     /// Per server id: each `Kestrel.serve` / `http.createServer` on this thread has its own handler.
     static DIRECT: RefCell<HashMap<u32, Rc<Direct>>> = RefCell::new(HashMap::new());
     static CURRENT: RefCell<Option<Current>> = const { RefCell::new(None) };
+    /// Wakes this worker's `run_event_loop` after a handler defers its response, so timers,
+    /// `setImmediate` and async-op completions scheduled during direct dispatch are serviced
+    /// (direct dispatch calls the handler outside the event-loop poll, which is otherwise
+    /// parked with nothing to wake it).
+    static LOOP_WAKER: RefCell<Option<deno_core::V8CrossThreadTaskSpawner>> = const { RefCell::new(None) };
     /// Server id -> served over TLS.
     static SERVER_TLS: RefCell<HashMap<u32, bool>> = RefCell::new(HashMap::new());
 }
@@ -91,7 +96,16 @@ pub fn init_thread_isolate(isolate: &v8::Isolate, context: v8::Global<v8::Contex
     // SAFETY: `v8::Isolate` is a transparent wrapper around the C++ isolate pointer; copying
     // the bits gives a second handle to the same isolate (it owns nothing).
     let copy: v8::Isolate = unsafe { std::ptr::read(isolate as *const v8::Isolate) };
+    if let Some(spawner) = state.borrow().try_borrow::<deno_core::V8CrossThreadTaskSpawner>().cloned() {
+        LOOP_WAKER.with(|w| *w.borrow_mut() = Some(spawner));
+    }
     ISOLATE.with(|i| *i.borrow_mut() = Some(IsolateInfo { isolate: Box::new(std::cell::UnsafeCell::new(copy)), context, state }));
+}
+
+/// Wake this worker's event loop so deferred work (timers/immediates/async ops scheduled by a
+/// handler during direct dispatch) is processed.
+pub(crate) fn wake_event_loop() {
+    LOOP_WAKER.with(|w| { if let Some(s) = w.borrow().as_ref() { s.spawn(|_| {}); } });
 }
 
 /// Registers the JS trampoline `(id) => [status, headers, body] | undefined`.
@@ -146,6 +160,8 @@ pub(crate) fn dispatch(rid: u32, req: CurrentReq, body: Option<IncomingBody>, t0
     let r = unsafe { call_js(&d, id) };
     let cur = CURRENT.with(|c| c.borrow_mut().take());
     let cur_tls = tls;
+    // The handler may have scheduled timers/immediates/async ops; make sure the loop wakes.
+    if r.is_none() { wake_event_loop(); }
     match r {
         Some(out) => {
             if let Some(t0) = t0 {

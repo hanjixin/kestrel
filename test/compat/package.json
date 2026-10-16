@@ -5,6 +5,7 @@
   "dependencies": {
     "bcrypt": "^5.1.1",
     "docx": "^9.5.0",
+    "express": "^4.21.2",
     "hash.js": "^1.1.7",
     "image-size": "^2.0.2",
     "inherits": "^2.0.4",

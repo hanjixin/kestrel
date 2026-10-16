@@ -13,7 +13,10 @@ export class IncomingMessage extends Readable {
     this.method = opts.method; this.url = opts.url; this.headers = opts.headers; this.rawHeaders = opts.rawHeaders || [];
     this.httpVersion = "1.1"; this.httpVersionMajor = 1; this.httpVersionMinor = 1; this.complete = false; this.aborted = false;
     this.statusCode = opts.statusCode; this.statusMessage = opts.statusMessage;
-    this.socket = opts.socket || { remoteAddress: "127.0.0.1", remotePort: 0, encrypted: false, setTimeout() {}, destroy() {}, on() {}, once() {}, end() {} };
+    // `readable: false` so `on-finished` (used by express's finalhandler to defer error/404
+    // responses until the request is drained) treats a bodyless request as finished at once;
+    // the body is delivered via the body promise, not by reading this fake socket.
+    this.socket = opts.socket || { remoteAddress: "127.0.0.1", remotePort: 0, encrypted: false, readable: false, writable: true, setTimeout() {}, destroy() {}, on() {}, once() {}, removeListener() {}, end() {} };
     this.connection = this.socket;
     this.trailers = {}; this.rawTrailers = [];
     if (opts.body) { this.push(Buffer.from(opts.body)); this.push(null); this.complete = true; }
