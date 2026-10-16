@@ -43,6 +43,10 @@ struct Conn {
     local_port: u16,
     peer: String,
     peer_port: u16,
+    /// Serializes concurrent writes so a second `op_net_write`/`op_net_shutdown` waits for the
+    /// first instead of finding the write half taken (Node allows concurrent socket.write; the
+    /// IPC channel and some libraries rely on it).
+    write_lock: std::rc::Rc<tokio::sync::Mutex<()>>,
 }
 impl Conn {
     fn ensure_split(&mut self) {
@@ -100,12 +104,13 @@ fn add_tcp(state: &Rc<RefCell<OpState>>, s: tokio::net::TcpStream) -> u32 {
         whole: Some(s), rd: None, wr: None,
         local: local.map(|a| a.ip().to_string()).unwrap_or_default(), local_port: local.map(|a| a.port()).unwrap_or(0),
         peer: peer.map(|a| a.ip().to_string()).unwrap_or_default(), peer_port: peer.map(|a| a.port()).unwrap_or(0),
+        write_lock: std::rc::Rc::new(tokio::sync::Mutex::new(())),
     })
 }
 #[cfg(unix)]
 fn add_unix(state: &Rc<RefCell<OpState>>, s: tokio::net::UnixStream, path: &str) -> u32 {
     let (rd, wr) = s.into_split();
-    insert_conn(state, Conn { whole: None, rd: Some(Box::new(rd)), wr: Some(Box::new(wr)), local: path.to_string(), local_port: 0, peer: path.to_string(), peer_port: 0 })
+    insert_conn(state, Conn { whole: None, rd: Some(Box::new(rd)), wr: Some(Box::new(wr)), local: path.to_string(), local_port: 0, peer: path.to_string(), peer_port: 0, write_lock: std::rc::Rc::new(tokio::sync::Mutex::new(())) })
 }
 fn conn_of(state: &Rc<RefCell<OpState>>, rid: u32) -> Result<Rc<RefCell<Conn>>, JsErrorBox> {
     let mut st = state.borrow_mut();
@@ -145,7 +150,7 @@ pub fn op_net_from_fd(state: &mut OpState, fd: i32) -> Result<u32, JsErrorBox> {
         let n = net(state);
         let rid = n.next;
         n.next += 1;
-        n.conns.insert(rid, Rc::new(RefCell::new(Conn { whole: None, rd: Some(Box::new(rd)), wr: Some(Box::new(wr)), local: "ipc".into(), local_port: 0, peer: "ipc".into(), peer_port: 0 })));
+        n.conns.insert(rid, Rc::new(RefCell::new(Conn { whole: None, rd: Some(Box::new(rd)), wr: Some(Box::new(wr)), local: "ipc".into(), local_port: 0, peer: "ipc".into(), peer_port: 0, write_lock: std::rc::Rc::new(tokio::sync::Mutex::new(())) })));
         n.closed.insert(rid, Rc::new(tokio::sync::Notify::new()));
         Ok(rid)
     }
@@ -181,6 +186,8 @@ pub async fn op_net_read(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Vec<u8
 #[op2]
 pub async fn op_net_write(state: Rc<RefCell<OpState>>, rid: u32, #[buffer(copy)] data: Vec<u8>) -> Result<(), JsErrorBox> {
     let c = conn_of(&state, rid)?;
+    let lock = c.borrow().write_lock.clone();
+    let _guard = lock.lock().await; // serialize concurrent writes on this connection
     let wr = { let mut cc = c.borrow_mut(); cc.ensure_split(); cc.wr.take() };
     let Some(mut wr) = wr else { return Err(JsErrorBox::new("Error", "EPIPE: This socket has been ended by the other party")) };
     let r = wr.write_all(&data).await;

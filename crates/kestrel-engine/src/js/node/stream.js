@@ -363,5 +363,8 @@ export const promises = {
   pipeline: (...s) => { const p = pipeline(...s); return p instanceof Promise ? p : Promise.resolve(); },
   finished: (s, o) => new Promise((res, rej) => finished(s, o, (e) => (e ? rej(e) : res()))),
 };
-Object.assign(Stream, { Readable, Writable, Duplex, Transform, PassThrough, Stream, finished, pipeline, promises, addAbortSignal, isReadable, isWritable, isErrored, isDisturbed, getDefaultHighWaterMark, setDefaultHighWaterMark, compose });
+// Node's stream module also exposes EventEmitter (code does `require('stream').EventEmitter`,
+// e.g. jest-worker's WorkerAbstract extends it).
+export { EventEmitter };
+Object.assign(Stream, { Readable, Writable, Duplex, Transform, PassThrough, Stream, EventEmitter, finished, pipeline, promises, addAbortSignal, isReadable, isWritable, isErrored, isDisturbed, getDefaultHighWaterMark, setDefaultHighWaterMark, compose });
 export default Stream;
