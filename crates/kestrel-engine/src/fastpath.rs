@@ -334,10 +334,10 @@ fn handle_events_batched(evs: &[Event]) -> bool {
                     continue;
                 }
                 let start = conn.rbuf.len();
-                conn.rbuf.resize(start + READ_CHUNK, 0);
                 starts[i] = start;
-                let ptr = conn.rbuf[start..].as_mut_ptr();
-                let e = opcode::Recv::new(types::Fd(conn.stream.as_raw_fd()), ptr, READ_CHUNK as u32).flags(libc::MSG_DONTWAIT).build().user_data(i as u64);
+                let sp = spare(&mut conn.rbuf);
+                let (ptr, len) = (sp.as_mut_ptr(), sp.len() as u32);
+                let e = opcode::Recv::new(types::Fd(conn.stream.as_raw_fd()), ptr, len).flags(libc::MSG_DONTWAIT).build().user_data(i as u64);
                 // SAFETY: rbuf is not touched until the completion below is collected.
                 if unsafe { ring.submission().push(&e) }.is_err() {
                     conn.rbuf.truncate(start);
@@ -376,7 +376,8 @@ fn handle_events_batched(evs: &[Event]) -> bool {
                 conn.rbuf.truncate(start);
                 alive[i] = false;
             } else {
-                conn.rbuf.truncate(start + res as usize);
+                // SAFETY: the completed recv wrote `res` bytes past `start`.
+                unsafe { conn.rbuf.set_len(start + res as usize) };
                 alive[i] = process_buffer(conn, *key);
             }
         }
@@ -519,10 +520,21 @@ fn set_interest(conn: &mut Conn, key: usize, readable: bool, writable: bool) {
 }
 
 /// One read, then serve every complete request in the buffer. Returns false to close.
+/// Room for one read at the end of `buf` without zero-filling it (`resize(.., 0)` wrote
+/// 16 KiB per request, which at thousands of connections streamed a cold buffer through
+/// the cache on every request).
+fn spare(buf: &mut Vec<u8>) -> &mut [u8] {
+    buf.reserve(READ_CHUNK);
+    let sp = buf.spare_capacity_mut();
+    // SAFETY: the kernel only writes into this slice; `set_len` below covers exactly the
+    // bytes it wrote.
+    unsafe { std::slice::from_raw_parts_mut(sp.as_mut_ptr() as *mut u8, sp.len().min(READ_CHUNK)) }
+}
+
 fn on_readable(conn: &mut Conn, key: usize) -> bool {
     let start = conn.rbuf.len();
-    conn.rbuf.resize(start + READ_CHUNK, 0);
-    let n = match conn.stream.read(&mut conn.rbuf[start..]) {
+    let r = conn.stream.read(spare(&mut conn.rbuf));
+    let n = match r {
         Ok(0) => {
             conn.rbuf.truncate(start);
             return false; // peer closed
@@ -537,7 +549,8 @@ fn on_readable(conn: &mut Conn, key: usize) -> bool {
             return false;
         }
     };
-    conn.rbuf.truncate(start + n);
+    // SAFETY: `n` bytes past `start` were written by `read`.
+    unsafe { conn.rbuf.set_len(start + n) };
     process_buffer(conn, key)
 }
 
