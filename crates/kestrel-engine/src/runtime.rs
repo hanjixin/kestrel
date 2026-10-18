@@ -96,10 +96,18 @@ static V8_INIT: std::sync::Once = std::sync::Once::new();
 /// KESTREL_V8_FLAGS adds raw V8 flags.
 fn init_v8_once() {
     V8_INIT.call_once(|| {
-        let flags = std::env::var("KESTREL_V8_FLAGS").unwrap_or_default();
-        if !flags.trim().is_empty() {
-            deno_core::v8::V8::set_flags_from_string(&flags);
-        }
+        // Start external-memory collection before short I/O jobs accumulate
+        // hundreds of MiB of dead ArrayBuffers. This sets the initial collection
+        // budget, not the maximum heap size; V8 still grows with the live set.
+        // Respect either user-specified initial-size flag: V8 prioritizes the
+        // old-space flag over initial-heap-size regardless of argument order.
+        let user_flags = std::env::var("KESTREL_V8_FLAGS").unwrap_or_default();
+        let initial_size_set = user_flags.split_whitespace().any(|flag| matches!(
+            flag.split('=').next(),
+            Some("--initial-old-space-size" | "--initial_old_space_size" | "--initial-heap-size" | "--initial_heap_size")
+        ));
+        let flags = if initial_size_set { user_flags } else { format!("--initial-old-space-size=32 {user_flags}") };
+        deno_core::v8::V8::set_flags_from_string(&flags);
         deno_core::JsRuntime::init_platform(None);
     });
 }

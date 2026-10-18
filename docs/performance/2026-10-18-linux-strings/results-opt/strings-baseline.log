@@ -1,0 +1,2 @@
+PASS http_end_strings.mjs exits=[0, 0]
+1/1 passed

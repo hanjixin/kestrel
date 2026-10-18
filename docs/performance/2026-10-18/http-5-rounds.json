@@ -1,0 +1,178 @@
+{
+  "system": "Darwin",
+  "machine": "arm64",
+  "summary": {
+    "bench/hello_node.mjs": {
+      "before": 151303.38,
+      "after": 151553.04,
+      "change_percent": 0.16500622788466757
+    },
+    "bench/hello_kestrel.ts": {
+      "before": 325883.39,
+      "after": 332110.68,
+      "change_percent": 1.9108951824761577
+    }
+  },
+  "samples": [
+    {
+      "fixture": "bench/hello_kestrel.ts",
+      "label": "before",
+      "round": 0,
+      "rps": 311040.15,
+      "rss_kib": 34224,
+      "output": "Running 5s test @ http://127.0.0.1:56943/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   251.28us    0.86ms  23.70ms   98.98%\n    Req/Sec   156.36k    29.49k  185.27k    88.24%\n  Latency Distribution\n     50%  162.00us\n     75%  180.00us\n     90%  319.00us\n     99%    1.14ms\n  1586385 requests in 5.10s, 195.16MB read\nRequests/sec: 311040.15\nTransfer/sec:     38.27MB\n"
+    },
+    {
+      "fixture": "bench/hello_kestrel.ts",
+      "label": "after",
+      "round": 0,
+      "rps": 333664.12,
+      "rss_kib": 34432,
+      "output": "Running 5s test @ http://127.0.0.1:57108/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   180.06us   65.12us   1.18ms   82.92%\n    Req/Sec   167.83k    13.95k  186.59k    85.29%\n  Latency Distribution\n     50%  160.00us\n     75%  173.00us\n     90%  298.00us\n     99%  397.00us\n  1701666 requests in 5.10s, 209.35MB read\nRequests/sec: 333664.12\nTransfer/sec:     41.05MB\n"
+    },
+    {
+      "fixture": "bench/hello_kestrel.ts",
+      "label": "after",
+      "round": 1,
+      "rps": 332110.68,
+      "rss_kib": 34096,
+      "output": "Running 5s test @ http://127.0.0.1:57278/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   182.99us   75.55us   2.40ms   82.65%\n    Req/Sec   166.90k     8.18k  184.82k    76.47%\n  Latency Distribution\n     50%  161.00us\n     75%  182.00us\n     90%  297.00us\n     99%  413.00us\n  1693717 requests in 5.10s, 208.37MB read\nRequests/sec: 332110.68\nTransfer/sec:     40.86MB\n"
+    },
+    {
+      "fixture": "bench/hello_kestrel.ts",
+      "label": "before",
+      "round": 1,
+      "rps": 325883.39,
+      "rss_kib": 27520,
+      "output": "Running 5s test @ http://127.0.0.1:57436/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   221.57us  688.80us  22.67ms   99.48%\n    Req/Sec   163.85k    18.70k  188.29k    86.00%\n  Latency Distribution\n     50%  161.00us\n     75%  181.00us\n     90%  305.00us\n     99%  588.00us\n  1629472 requests in 5.00s, 200.46MB read\nRequests/sec: 325883.39\nTransfer/sec:     40.09MB\n"
+    },
+    {
+      "fixture": "bench/hello_kestrel.ts",
+      "label": "before",
+      "round": 2,
+      "rps": 335050.49,
+      "rss_kib": 34080,
+      "output": "Running 5s test @ http://127.0.0.1:57603/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   185.37us  110.46us   4.41ms   89.23%\n    Req/Sec   168.42k    13.05k  188.77k    85.29%\n  Latency Distribution\n     50%  161.00us\n     75%  173.00us\n     90%  300.00us\n     99%  456.00us\n  1708596 requests in 5.10s, 210.20MB read\nRequests/sec: 335050.49\nTransfer/sec:     41.22MB\n"
+    },
+    {
+      "fixture": "bench/hello_kestrel.ts",
+      "label": "after",
+      "round": 2,
+      "rps": 329990.22,
+      "rss_kib": 34064,
+      "output": "Running 5s test @ http://127.0.0.1:57756/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   207.80us  345.13us   9.68ms   98.65%\n    Req/Sec   165.84k    21.30k  187.82k    91.18%\n  Latency Distribution\n     50%  160.00us\n     75%  173.00us\n     90%  307.00us\n     99%  719.00us\n  1682994 requests in 5.10s, 207.05MB read\nRequests/sec: 329990.22\nTransfer/sec:     40.60MB\n"
+    },
+    {
+      "fixture": "bench/hello_kestrel.ts",
+      "label": "after",
+      "round": 3,
+      "rps": 336558.92,
+      "rss_kib": 34192,
+      "output": "Running 5s test @ http://127.0.0.1:57924/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   179.11us   63.20us   1.13ms   83.33%\n    Req/Sec   169.22k    14.51k  190.45k    84.31%\n  Latency Distribution\n     50%  160.00us\n     75%  171.00us\n     90%  297.00us\n     99%  381.00us\n  1716539 requests in 5.10s, 211.18MB read\nRequests/sec: 336558.92\nTransfer/sec:     41.40MB\n"
+    },
+    {
+      "fixture": "bench/hello_kestrel.ts",
+      "label": "before",
+      "round": 3,
+      "rps": 317046.56,
+      "rss_kib": 34096,
+      "output": "Running 5s test @ http://127.0.0.1:58100/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   194.59us  186.76us   8.11ms   97.44%\n    Req/Sec   159.35k    20.59k  187.16k    70.59%\n  Latency Distribution\n     50%  161.00us\n     75%  183.00us\n     90%  308.00us\n     99%  532.00us\n  1616836 requests in 5.10s, 198.91MB read\nRequests/sec: 317046.56\nTransfer/sec:     39.00MB\n"
+    },
+    {
+      "fixture": "bench/hello_kestrel.ts",
+      "label": "before",
+      "round": 4,
+      "rps": 330816.62,
+      "rss_kib": 34048,
+      "output": "Running 5s test @ http://127.0.0.1:58261/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   181.42us   77.75us   1.67ms   81.95%\n    Req/Sec   167.91k    13.99k  284.12k    93.07%\n  Latency Distribution\n     50%  159.00us\n     75%  175.00us\n     90%  301.00us\n     99%  469.00us\n  1686956 requests in 5.10s, 207.54MB read\nRequests/sec: 330816.62\nTransfer/sec:     40.70MB\n"
+    },
+    {
+      "fixture": "bench/hello_kestrel.ts",
+      "label": "after",
+      "round": 4,
+      "rps": 286043.09,
+      "rss_kib": 34288,
+      "output": "Running 5s test @ http://127.0.0.1:58414/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   190.36us   86.90us   2.45ms   78.13%\n    Req/Sec   143.74k    24.24k  185.98k    53.92%\n  Latency Distribution\n     50%  163.00us\n     75%  212.00us\n     90%  313.00us\n     99%  482.00us\n  1458661 requests in 5.10s, 179.45MB read\nRequests/sec: 286043.09\nTransfer/sec:     35.19MB\n"
+    },
+    {
+      "fixture": "bench/hello_node.mjs",
+      "label": "before",
+      "round": 0,
+      "rps": 151303.38,
+      "rss_kib": 51536,
+      "output": "Running 5s test @ http://127.0.0.1:58651/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   427.48us  175.40us   7.70ms   95.11%\n    Req/Sec    76.02k     3.01k   80.68k    71.00%\n  Latency Distribution\n     50%  398.00us\n     75%  416.00us\n     90%  458.00us\n     99%    0.87ms\n  756565 requests in 5.00s, 93.08MB read\nRequests/sec: 151303.38\nTransfer/sec:     18.61MB\n"
+    },
+    {
+      "fixture": "bench/hello_node.mjs",
+      "label": "after",
+      "round": 0,
+      "rps": 151553.04,
+      "rss_kib": 49456,
+      "output": "Running 5s test @ http://127.0.0.1:58829/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   421.43us   86.35us   2.18ms   93.74%\n    Req/Sec    76.16k     2.63k   79.94k    74.00%\n  Latency Distribution\n     50%  400.00us\n     75%  417.00us\n     90%  451.00us\n     99%  826.00us\n  757824 requests in 5.00s, 93.23MB read\nRequests/sec: 151553.04\nTransfer/sec:     18.64MB\n"
+    },
+    {
+      "fixture": "bench/hello_node.mjs",
+      "label": "after",
+      "round": 1,
+      "rps": 145944.18,
+      "rss_kib": 38352,
+      "output": "Running 5s test @ http://127.0.0.1:59003/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   496.24us  773.39us  20.38ms   98.91%\n    Req/Sec    73.36k     7.13k   78.41k    98.04%\n  Latency Distribution\n     50%  411.00us\n     75%  432.00us\n     90%  470.00us\n     99%    1.44ms\n  744328 requests in 5.10s, 91.57MB read\nRequests/sec: 145944.18\nTransfer/sec:     17.95MB\n"
+    },
+    {
+      "fixture": "bench/hello_node.mjs",
+      "label": "before",
+      "round": 1,
+      "rps": 151838.97,
+      "rss_kib": 50560,
+      "output": "Running 5s test @ http://127.0.0.1:59167/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   421.81us   89.69us   3.88ms   94.88%\n    Req/Sec    76.32k     2.64k   79.49k    92.16%\n  Latency Distribution\n     50%  403.00us\n     75%  416.00us\n     90%  444.00us\n     99%  820.00us\n  774407 requests in 5.10s, 95.27MB read\nRequests/sec: 151838.97\nTransfer/sec:     18.68MB\n"
+    },
+    {
+      "fixture": "bench/hello_node.mjs",
+      "label": "before",
+      "round": 2,
+      "rps": 141858.92,
+      "rss_kib": 43120,
+      "output": "Running 5s test @ http://127.0.0.1:59349/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   528.61us  666.54us  12.00ms   96.86%\n    Req/Sec    71.32k    11.87k   80.40k    92.00%\n  Latency Distribution\n     50%  401.00us\n     75%  428.00us\n     90%  592.00us\n     99%    3.92ms\n  709620 requests in 5.00s, 87.30MB read\nRequests/sec: 141858.92\nTransfer/sec:     17.45MB\n"
+    },
+    {
+      "fixture": "bench/hello_node.mjs",
+      "label": "after",
+      "round": 2,
+      "rps": 153389.58,
+      "rss_kib": 46928,
+      "output": "Running 5s test @ http://127.0.0.1:59517/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   416.16us   71.59us   1.96ms   94.83%\n    Req/Sec    77.09k     1.01k   79.31k    69.00%\n  Latency Distribution\n     50%  400.00us\n     75%  412.00us\n     90%  436.00us\n     99%  799.00us\n  766997 requests in 5.00s, 94.36MB read\nRequests/sec: 153389.58\nTransfer/sec:     18.87MB\n"
+    },
+    {
+      "fixture": "bench/hello_node.mjs",
+      "label": "after",
+      "round": 3,
+      "rps": 153032.85,
+      "rss_kib": 47120,
+      "output": "Running 5s test @ http://127.0.0.1:59671/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   417.37us   71.34us   1.77ms   94.88%\n    Req/Sec    76.93k     1.61k   79.68k    63.00%\n  Latency Distribution\n     50%  402.00us\n     75%  414.00us\n     90%  438.00us\n     99%  806.00us\n  765212 requests in 5.00s, 94.14MB read\nRequests/sec: 153032.85\nTransfer/sec:     18.83MB\n"
+    },
+    {
+      "fixture": "bench/hello_node.mjs",
+      "label": "before",
+      "round": 3,
+      "rps": 154213.79,
+      "rss_kib": 46592,
+      "output": "Running 5s test @ http://127.0.0.1:59824/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   419.00us  167.24us   8.46ms   96.15%\n    Req/Sec    77.50k     1.82k   80.08k    88.24%\n  Latency Distribution\n     50%  397.00us\n     75%  409.00us\n     90%  433.00us\n     99%  803.00us\n  786476 requests in 5.10s, 96.76MB read\nRequests/sec: 154213.79\nTransfer/sec:     18.97MB\n"
+    },
+    {
+      "fixture": "bench/hello_node.mjs",
+      "label": "before",
+      "round": 4,
+      "rps": 150004.7,
+      "rss_kib": 41152,
+      "output": "Running 5s test @ http://127.0.0.1:59975/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   626.33us    2.42ms  47.26ms   99.11%\n    Req/Sec    75.63k     7.16k   79.83k    92.00%\n  Latency Distribution\n     50%  397.00us\n     75%  412.00us\n     90%  458.00us\n     99%    2.40ms\n  755026 requests in 5.03s, 92.89MB read\nRequests/sec: 150004.70\nTransfer/sec:     18.45MB\n"
+    },
+    {
+      "fixture": "bench/hello_node.mjs",
+      "label": "after",
+      "round": 4,
+      "rps": 151437.68,
+      "rss_kib": 50672,
+      "output": "Running 5s test @ http://127.0.0.1:60137/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   423.02us   93.04us   3.42ms   94.84%\n    Req/Sec    76.12k     2.26k   78.83k    91.00%\n  Latency Distribution\n     50%  403.00us\n     75%  416.00us\n     90%  444.00us\n     99%  829.00us\n  757234 requests in 5.00s, 93.16MB read\nRequests/sec: 151437.68\nTransfer/sec:     18.63MB\n"
+    }
+  ]
+}

@@ -1,0 +1,302 @@
+[
+  {
+    "samples": 40471,
+    "frame": {
+      "functionName": "(idle)",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    }
+  },
+  {
+    "samples": 4244,
+    "frame": {
+      "functionName": "op_k_url_parse",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    }
+  },
+  {
+    "samples": 1949,
+    "frame": {
+      "functionName": "op_kestrel_http_respond_bytes",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    }
+  },
+  {
+    "samples": 1611,
+    "frame": {
+      "functionName": "op_kestrel_http_url",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    }
+  },
+  {
+    "samples": 1566,
+    "frame": {
+      "functionName": "op_kestrel_http_headers",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    }
+  },
+  {
+    "samples": 1266,
+    "frame": {
+      "functionName": "op_kestrel_http_method",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    }
+  },
+  {
+    "samples": 1148,
+    "frame": {
+      "functionName": "get headers",
+      "scriptId": "8",
+      "url": "ext:kestrel/bootstrap.js",
+      "lineNumber": 153,
+      "columnNumber": 13
+    }
+  },
+  {
+    "samples": 1113,
+    "frame": {
+      "functionName": "Buffer",
+      "scriptId": "13",
+      "url": "ext:kestrel/node/buffer.js",
+      "lineNumber": 43,
+      "columnNumber": 7
+    }
+  },
+  {
+    "samples": 835,
+    "frame": {
+      "functionName": "utf8Encode",
+      "scriptId": "11",
+      "url": "ext:kestrel/internal.js",
+      "lineNumber": 158,
+      "columnNumber": 26
+    }
+  },
+  {
+    "samples": 746,
+    "frame": {
+      "functionName": "(garbage collector)",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    }
+  },
+  {
+    "samples": 743,
+    "frame": {
+      "functionName": "entries",
+      "scriptId": "8",
+      "url": "ext:kestrel/bootstrap.js",
+      "lineNumber": 86,
+      "columnNumber": 10
+    }
+  },
+  {
+    "samples": 739,
+    "frame": {
+      "functionName": "op_k_utf8_encode",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    }
+  },
+  {
+    "samples": 725,
+    "frame": {
+      "functionName": "(program)",
+      "scriptId": "0",
+      "url": "",
+      "lineNumber": -1,
+      "columnNumber": -1
+    }
+  },
+  {
+    "samples": 693,
+    "frame": {
+      "functionName": "",
+      "scriptId": "19",
+      "url": "ext:kestrel/node/http.js",
+      "lineNumber": 143,
+      "columnNumber": 29
+    }
+  },
+  {
+    "samples": 528,
+    "frame": {
+      "functionName": "_send",
+      "scriptId": "19",
+      "url": "ext:kestrel/node/http.js",
+      "lineNumber": 112,
+      "columnNumber": 7
+    }
+  },
+  {
+    "samples": 504,
+    "frame": {
+      "functionName": "append",
+      "scriptId": "8",
+      "url": "ext:kestrel/bootstrap.js",
+      "lineNumber": 82,
+      "columnNumber": 8
+    }
+  },
+  {
+    "samples": 460,
+    "frame": {
+      "functionName": "parse",
+      "scriptId": "35",
+      "url": "ext:kestrel/node/url.js",
+      "lineNumber": 5,
+      "columnNumber": 14
+    }
+  },
+  {
+    "samples": 262,
+    "frame": {
+      "functionName": "fromBytes",
+      "scriptId": "13",
+      "url": "ext:kestrel/node/buffer.js",
+      "lineNumber": 192,
+      "columnNumber": 18
+    }
+  },
+  {
+    "samples": 251,
+    "frame": {
+      "functionName": "write",
+      "scriptId": "27",
+      "url": "ext:kestrel/node/stream.js",
+      "lineNumber": 209,
+      "columnNumber": 7
+    }
+  },
+  {
+    "samples": 217,
+    "frame": {
+      "functionName": "",
+      "scriptId": "19",
+      "url": "ext:kestrel/node/http.js",
+      "lineNumber": 151,
+      "columnNumber": 48
+    }
+  },
+  {
+    "samples": 199,
+    "frame": {
+      "functionName": "wdrain",
+      "scriptId": "27",
+      "url": "ext:kestrel/node/stream.js",
+      "lineNumber": 182,
+      "columnNumber": 15
+    }
+  },
+  {
+    "samples": 172,
+    "frame": {
+      "functionName": "Stream",
+      "scriptId": "27",
+      "url": "ext:kestrel/node/stream.js",
+      "lineNumber": 12,
+      "columnNumber": 22
+    }
+  },
+  {
+    "samples": 167,
+    "frame": {
+      "functionName": "fetch",
+      "scriptId": "19",
+      "url": "ext:kestrel/node/http.js",
+      "lineNumber": 142,
+      "columnNumber": 13
+    }
+  },
+  {
+    "samples": 164,
+    "frame": {
+      "functionName": "concat",
+      "scriptId": "13",
+      "url": "ext:kestrel/node/buffer.js",
+      "lineNumber": 78,
+      "columnNumber": 15
+    }
+  },
+  {
+    "samples": 161,
+    "frame": {
+      "functionName": "on",
+      "scriptId": "16",
+      "url": "ext:kestrel/node/events.js",
+      "lineNumber": 69,
+      "columnNumber": 4
+    }
+  },
+  {
+    "samples": 156,
+    "frame": {
+      "functionName": "IncomingMessage",
+      "scriptId": "19",
+      "url": "ext:kestrel/node/http.js",
+      "lineNumber": 10,
+      "columnNumber": 13
+    }
+  },
+  {
+    "samples": 152,
+    "frame": {
+      "functionName": "",
+      "scriptId": "6",
+      "url": "ext:core/01_core.js",
+      "lineNumber": 585,
+      "columnNumber": 19
+    }
+  },
+  {
+    "samples": 117,
+    "frame": {
+      "functionName": "_addListener",
+      "scriptId": "16",
+      "url": "ext:kestrel/node/events.js",
+      "lineNumber": 41,
+      "columnNumber": 14
+    }
+  },
+  {
+    "samples": 115,
+    "frame": {
+      "functionName": "Buffer",
+      "scriptId": "13",
+      "url": "ext:kestrel/node/buffer.js",
+      "lineNumber": 43,
+      "columnNumber": 7
+    }
+  },
+  {
+    "samples": 111,
+    "frame": {
+      "functionName": "Stream",
+      "scriptId": "27",
+      "url": "ext:kestrel/node/stream.js",
+      "lineNumber": 12,
+      "columnNumber": 22
+    }
+  }
+]

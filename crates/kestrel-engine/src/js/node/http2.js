@@ -418,7 +418,7 @@ class Http2ServerBase extends EventEmitter {
           });
         },
       });
-      this._port = info.port; this._host = info.hostname; this.listening = true;
+      this._server = info; this._port = info.port; this._host = info.hostname; this.listening = true;
       queueMicrotask(() => this.emit("listening"));
     } catch (e) { queueMicrotask(() => this.emit("error", e)); }
     return this;
@@ -426,9 +426,9 @@ class Http2ServerBase extends EventEmitter {
   address() { return this.listening ? { address: this._host, family: "IPv4", port: this._port } : null; }
   close(cb) {
     this.listening = false; if (cb) this.once("close", cb);
-    if (this._rid !== undefined) ops.op_h2_close_listener(this._rid);
+    const stopped = this._rid !== undefined ? ops.op_h2_close_listener(this._rid) : this._server?.stop();
     for (const s of this._sessions.values()) s.close();
-    queueMicrotask(() => this.emit("close")); return this;
+    Promise.resolve(stopped).then(() => this.emit("close"), e => this.emit("error", e)); return this;
   }
   closeAllConnections() { for (const s of this._sessions.values()) s.destroy(); } closeIdleConnections() {}
   setTimeout(ms, cb) { this.timeout = ms; if (cb) this.on("timeout", cb); return this; }

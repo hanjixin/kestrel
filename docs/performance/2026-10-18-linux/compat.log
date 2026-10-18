@@ -1,0 +1,71 @@
+PASS http_early_body_read.mjs exits=[0, 0]
+PASS http_request_metadata.mjs exits=[0, 0]
+PASS worker_clone.mjs exits=[0, 0]
+PASS fork_advanced.mjs exits=[0, 0]
+PASS fs_async.mjs exits=[0, 0]
+PASS fs_handles.mjs exits=[0, 0]
+PASS http_streaming.mjs exits=[0, 0]
+PASS http_stream_lifecycle.mjs exits=[0, 0]
+PASS http_end_buffer.mjs exits=[0, 0]
+PASS builtin_subpaths.mjs exits=[0, 0]
+PASS server_close.mjs exits=[0, 0]
+PASS server_close_active.mjs exits=[0, 0]
+PASS server_close_idle.mjs exits=[0, 0]
+PASS http2.mjs exits=[0, 0]
+PASS http2_stress.mjs exits=[0, 0]
+PASS http.mjs exits=[0, 0]
+PASS http_implicit_headers.mjs exits=[0, 0]
+PASS http_async_close.mjs exits=[0, 0]
+PASS https.mjs exits=[0, 0]
+PASS net.mjs exits=[0, 0]
+PASS unix.mjs exits=[0, 0]
+PASS fork.mjs exits=[0, 0]
+PASS fork_disconnect.mjs exits=[0, 0]
+PASS worker.mjs exits=[0, 0]
+PASS fs_streams.mjs exits=[0, 0]
+PASS esm.mjs exits=[0, 0]
+PASS npm.mjs exits=[0, 0]
+PASS realworld.cjs exits=[0, 0]
+PASS misc.mjs exits=[0, 0]
+PASS als.mjs exits=[0, 0]
+PASS builtins.cjs exits=[0, 0]
+PASS proc.mjs exits=[0, 0]
+FAIL express.cjs exits=[1, 1]
+
+node:internal/modules/cjs/loader:1252
+  throw err;
+  ^
+
+Error: Cannot find module 'express'
+Require stack:
+- /workspace/kestrel-linux/test/compat/express.cjs
+    at Function._resolveFilename (node:internal/modules/cjs/loader:1249:15)
+    at Function._load (node:internal/modules/cjs/loader:1075:27)
+    at TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:219:24)
+    at Module.require (node:internal/modules/cjs/loader:1340:12)
+    at require (node:internal/modules/helpers:138:16)
+    at Object.<anonymous> (/workspace/kestrel-linux/test/compat/express.cjs:3:17)
+    at Module._compile (node:internal/modules/cjs/loader:1565:14)
+    at Object..js (node:internal/modules/cjs/loader:1708:10)
+    at Module.load (node:internal/modules/cjs/loader:1318:32) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [
+    '/workspace/kestrel-linux/test/compat/express.cjs'
+  ]
+}
+
+Node.js v22.12.0
+
+Error: Cannot find module 'express'
+Require stack:
+- /workspace/kestrel-linux/test/compat/express.cjs
+    at require (ext:kestrel/node/module.js:58:29)
+    at Object.<anonymous> (/workspace/kestrel-linux/test/compat/express.cjs:3:17)
+    at compileAndRun (ext:kestrel/node/module.js:117:6)
+    at loadInto (ext:kestrel/node/module.js:103:3)
+    at loadFile (ext:kestrel/node/module.js:86:9)
+    at globalThis.<computed> (ext:kestrel/node/module.js:121:59)
+    at file:///workspace/kestrel-linux/test/compat/express.cjs:1:54
+
+32/33 passed

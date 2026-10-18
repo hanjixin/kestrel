@@ -1,0 +1,18 @@
+Traceback (most recent call last):
+  File "/workspace/kestrel/bench/compare_bun.py", line 29, in <module>
+    if 'Socket errors:' in output or 'Non-2xx' in output:raise RuntimeError(output)
+                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: Running 5s test @ http://127.0.0.1:53997/
+  2 threads and 64 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   319.70us    1.49ms  31.39ms   99.00%
+    Req/Sec   152.40k    27.90k  180.80k    87.25%
+  Latency Distribution
+     50%  162.00us
+     75%  196.00us
+     90%  319.00us
+     99%    1.81ms
+  1546610 requests in 5.10s, 190.27MB read
+  Socket errors: connect 0, read 0, write 0, timeout 1
+Requests/sec: 303257.75
+Transfer/sec:     37.31MB

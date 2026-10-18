@@ -1,3 +1,4 @@
+import { encodeMessage, MessageDecoder, closeChannel } from "ext:kestrel/ipc.js";
 // node:child_process — spawn/exec/execFile/fork and the *Sync variants on native ops.
 import { ops, nodeError, utf8Decode } from "ext:kestrel/internal.js";
 import { EventEmitter } from "ext:kestrel/node/events.js";
@@ -33,8 +34,9 @@ function buildOpts(file, args, options, shellDefault) {
     argv = [];
   }
   const stdioArr = Array.isArray(options.stdio) ? options.stdio : [options.stdio, options.stdio, options.stdio];
+  if (options.serialization !== undefined && !["json", "advanced"].includes(options.serialization)) throw nodeError("ERR_INVALID_ARG_VALUE", "Invalid serialization mode");
   const ipc = !!options._ipc || stdioArr.includes("ipc");
-  return { cmd, args: argv, cwd: options.cwd ? String(options.cwd) : null, env: envList(options.env), stdio: normStdio(options.stdio), shell: !!shell, detached: !!options.detached, ipc };
+  return { cmd, args: argv, cwd: options.cwd ? String(options.cwd) : null, env: envList(options.env), stdio: normStdio(options.stdio), shell: !!shell, detached: !!options.detached, ipc, serialization: options.serialization || "json" };
 }
 
 export class ChildProcess extends EventEmitter {
@@ -72,7 +74,7 @@ export class ChildProcess extends EventEmitter {
     if (o.stdio[1] === "pipe") this.stdout = pipe(1);
     if (o.stdio[2] === "pipe") this.stderr = pipe(2);
     this.stdio = [this.stdin, this.stdout, this.stderr];
-    if (ipcFd >= 0) this._setupIpc(ipcFd);
+    if (ipcFd >= 0) this._setupIpc(ipcFd, o.serialization);
     queueMicrotask(() => this.emit("spawn"));
     ops.op_cp_wait(rid).then(([code, sig]) => {
       this._exited = true;
@@ -85,23 +87,24 @@ export class ChildProcess extends EventEmitter {
   _close() { if (this._closed) return; this._closed = true; this.emit("close", this.exitCode, this.signalCode); }
   kill(signal = "SIGTERM") { if (this._rid === null) return false; const ok = ops.op_cp_kill(this._rid, sigNum(signal)); if (ok) this.killed = true; return ok; }
   ref() {} unref() {} disconnect() {}
-  _setupIpc(fd) {
+  _setupIpc(fd, serialization) {
+    this._advanced = serialization === "advanced";
     this._ipc = ops.op_net_from_fd(fd); this.connected = true; this.channel = {};
     (async () => {
-      let buf = "";
+      const decoder = new MessageDecoder(this._advanced);
       try {
-        for (;;) { const chunk = await ops.op_net_read(this._ipc); if (chunk.length === 0) break; buf += Buffer.from(chunk).toString("utf8"); let i; while ((i = buf.indexOf("\n")) !== -1) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line) this.emit("message", JSON.parse(line)); } }
+        for (;;) { const chunk = await ops.op_net_read(this._ipc); if (chunk.length === 0) break; decoder.push(chunk, value => this.emit("message", value)); }
       } catch {}
-      if (this.connected) { this.connected = false; this.emit("disconnect"); }
+      if (this.connected) { this.connected = false; closeChannel(this._ipc).catch(() => {}).then(() => this.emit("disconnect")); }
     })();
   }
   send(message, sendHandle, options, callback) {
     if (typeof sendHandle === "function") { callback = sendHandle; sendHandle = undefined; } else if (typeof options === "function") { callback = options; options = undefined; }
     if (!this.connected) { const e = nodeError("ERR_IPC_CHANNEL_CLOSED", "Channel closed"); if (callback) { queueMicrotask(() => callback(e)); return false; } throw e; }
-    ops.op_net_write(this._ipc, Buffer.from(JSON.stringify(message) + "\n")).then(() => callback && callback(null), (e) => { if (callback) callback(e); else this.emit("error", e); });
+    ops.op_net_write(this._ipc, encodeMessage(message, this._advanced)).then(() => callback && callback(null), (e) => { if (callback) callback(e); else this.emit("error", e); });
     return true;
   }
-  disconnect() { if (!this.connected) return; this.connected = false; ops.op_net_shutdown(this._ipc).then(() => {}, () => {}); this.emit("disconnect"); }
+  disconnect() { if (!this.connected) return; this.connected = false; closeChannel(this._ipc).catch(() => {}).then(() => this.emit("disconnect")); }
   [Symbol.dispose]() { this.kill(); }
 }
 

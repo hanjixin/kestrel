@@ -1,0 +1,5 @@
+#!/bin/sh
+case "$1" in
+  bench/hello_*) exec /usr/bin/taskset -c 2 /opt/benchmark/node/bin/node "$@" ;;
+  *) exec /opt/benchmark/node/bin/node "$@" ;;
+esac

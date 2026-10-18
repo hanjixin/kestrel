@@ -58,6 +58,11 @@ pub async fn op_kestrel_http_accept(state: Rc<RefCell<OpState>>, rid: u32) -> Re
     super::httpimpl::accept(state, rid).await
 }
 
+#[op2]
+pub async fn op_kestrel_http_close(state: Rc<RefCell<OpState>>, rid: u32) {
+    super::httpimpl::close(state, rid).await
+}
+
 #[op2(fast)]
 pub fn op_kestrel_http_set_handler(scope: &mut v8::PinScope, state: Rc<RefCell<OpState>>, rid: u32, f: v8::Local<v8::Function>) {
     super::httpimpl::set_handler(scope, state, rid, f)
@@ -97,6 +102,15 @@ pub fn op_kestrel_http_respond_bytes(
     super::httpimpl::respond(state, id, status, headers, bytes::Bytes::copy_from_slice(body))
 }
 
+#[op2(fast)]
+pub fn op_http_stream_start(state: &mut OpState, id: u32, status: u16, #[string] headers: &str) -> Result<u32, deno_error::JsErrorBox> { super::httpimpl::stream_start(state, id, status, headers) }
+#[op2]
+pub async fn op_http_stream_write(state: Rc<RefCell<OpState>>, id: u32, #[buffer(copy)] bytes: Vec<u8>) -> Result<(), deno_error::JsErrorBox> { super::httpimpl::stream_write(state, id, bytes).await }
+#[op2]
+pub async fn op_http_stream_closed(state: Rc<RefCell<OpState>>, id: u32) -> bool { super::httpimpl::stream_closed(state, id).await }
+#[op2(fast)]
+pub fn op_http_stream_end(state: &mut OpState, id: u32, abort: bool) { super::httpimpl::stream_end(state, id, abort); }
+
 #[op2]
 #[buffer]
 pub async fn op_kestrel_http_body(state: Rc<RefCell<OpState>>, id: u32) -> Result<Vec<u8>, deno_error::JsErrorBox> {
@@ -121,6 +135,12 @@ pub async fn op_kestrel_fetch(
 #[string]
 pub fn op_kestrel_http_headers(state: &mut OpState, id: u32) -> String {
     super::httpimpl::headers(state, id)
+}
+
+#[op2]
+#[string]
+pub fn op_kestrel_http_node_request(state: &mut OpState, id: u32) -> String {
+    super::httpimpl::node_request(state, id)
 }
 
 #[op2]
@@ -201,8 +221,8 @@ deno_core::extension!(
     kestrel,
     ops = [
         op_kestrel_exit, op_kestrel_cwd, op_kestrel_v8_version,
-        op_kestrel_http_listen, op_kestrel_http_accept, op_kestrel_http_respond, op_kestrel_http_respond_bytes,
-        op_kestrel_http_body, op_kestrel_http_headers, op_kestrel_http_method, op_kestrel_http_url, op_kestrel_http_set_handler, op_kestrel_fetch, op_kestrel_fetch_h2, op_kestrel_http_version, op_kestrel_http_port,
+        op_kestrel_http_listen, op_kestrel_http_accept, op_kestrel_http_close, op_kestrel_http_respond, op_kestrel_http_respond_bytes,
+        op_kestrel_http_body, op_kestrel_http_headers, op_kestrel_http_node_request, op_kestrel_http_method, op_kestrel_http_url, op_kestrel_http_set_handler, op_kestrel_fetch, op_kestrel_fetch_h2, op_kestrel_http_version, op_kestrel_http_port,
         op_kestrel_spawn_workers, op_kestrel_worker_id, op_kestrel_cpus,
         super::nodeimpl::op_k_fs_read_text, super::nodeimpl::op_k_fs_read_bytes, super::nodeimpl::op_k_fs_write_bytes,
         super::nodeimpl::op_k_fs_write_text, super::nodeimpl::op_k_fs_stat, super::nodeimpl::op_k_fs_exists,
@@ -245,12 +265,17 @@ deno_core::extension!(
         super::h2impl::op_h2_read, super::h2impl::op_h2_respond, super::h2impl::op_h2_write, super::h2impl::op_h2_end, super::h2impl::op_h2_rst, super::h2impl::op_h2_release,
         super::h2impl::op_h2_push, super::h2impl::op_h2_ping, super::h2impl::op_h2_conn_close, super::h2impl::op_h2_connect, super::h2impl::op_h2_request,
         super::h2impl::op_h2_response, super::h2impl::op_h2_push_promise, super::h2impl::op_h2_conn_info,
+        super::nodeimpl::op_k_fs_stat_async, super::nodeimpl::op_k_fs_readdir_async, super::nodeimpl::op_k_fs_mkdir_async, super::nodeimpl::op_k_fs_remove_async, super::nodeimpl::op_k_fs_rename_async, super::nodeimpl::op_k_fs_copy_async, super::nodeimpl::op_k_fs_realpath_async, super::nodeimpl::op_k_fs_readlink_async, super::nodeimpl::op_k_fs_chmod_async, super::nodeimpl::op_k_fs_symlink_async, super::nodeimpl::op_k_fs_utimes_async, super::nodeimpl::op_k_fs_mkdtemp_async,
+        super::nodeimpl::op_k_fs_read_async, super::nodeimpl::op_k_fs_write_async,
+        super::procimpl::op_fd_stat_async, super::procimpl::op_fd_control_async, super::procimpl::op_fd_open_async, super::procimpl::op_fd_read_async, super::procimpl::op_fd_write_async, super::procimpl::op_fd_close_async,
+        op_http_stream_start, op_http_stream_write, op_http_stream_end, op_http_stream_closed,
+        super::cloneimpl::op_ipc_encode, super::cloneimpl::op_ipc_decode, super::cloneimpl::op_clone_encode, super::cloneimpl::op_clone_decode,
         op_kestrel_call0, op_kestrel_call1, op_kestrel_call2, op_kestrel_call3,
         op_kestrel_call4, op_kestrel_call5, op_kestrel_call6,
     ],
     esm_entry_point = "ext:kestrel/bootstrap.js",
-    esm = [dir "src/js", "bootstrap.js", "globals.js", "web_streams.js", "internal.js",
-        "node/assert.js", "node/buffer.js", "node/child_process.js", "node/crypto.js", "node/events.js",
+    esm = [dir "src/js", "bootstrap.js", "globals.js", "web_streams.js", "internal.js", "ipc.js",
+        "node/assert.js", "node/assert_strict.js", "node/stream_promises.js", "node/buffer.js", "node/child_process.js", "node/crypto.js", "node/events.js",
         "node/fs.js", "node/fs_promises.js", "node/http.js", "node/https.js", "node/module.js", "node/net.js",
         "node/os.js", "node/path.js", "node/path_posix.js", "node/process.js", "node/querystring.js",
         "node/readline.js", "node/stream.js", "node/string_decoder.js", "node/stream_web.js", "node/diagnostics_channel.js", "node/console.js", "node/timers.js", "node/timers_promises.js",

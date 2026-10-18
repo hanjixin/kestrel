@@ -1,0 +1,65 @@
+[
+  {
+    "flag": "--initial-old-space-size=16",
+    "round": 1,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":49,\"ticks\":25}\n",
+    "stderr": "        0.89 real         0.02 user         0.08 sys\n           293634048  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               17393  page reclaims\n                 789  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  49  voluntary context switches\n                 848  involuntary context switches\n           560830734  instructions retired\n           426440539  cycles elapsed\n           279037944  peak memory footprint\n",
+    "exit": 0
+  },
+  {
+    "flag": "--initial-old-space-size=16",
+    "round": 2,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":47,\"ticks\":23}\n",
+    "stderr": "        0.74 real         0.01 user         0.06 sys\n           293748736  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               18180  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  53  voluntary context switches\n                 477  involuntary context switches\n           467319441  instructions retired\n           330148058  cycles elapsed\n           279136344  peak memory footprint\n",
+    "exit": 0
+  },
+  {
+    "flag": "--initial-old-space-size=16",
+    "round": 3,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":47,\"ticks\":23}\n",
+    "stderr": "        0.73 real         0.01 user         0.06 sys\n           293519360  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               18164  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  66  voluntary context switches\n                 362  involuntary context switches\n           472727656  instructions retired\n           325570058  cycles elapsed\n           278906848  peak memory footprint\n",
+    "exit": 0
+  },
+  {
+    "flag": "--initial-old-space-size=32",
+    "round": 1,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":46,\"ticks\":24}\n",
+    "stderr": "        0.74 real         0.01 user         0.06 sys\n           293617664  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               18170  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  59  voluntary context switches\n                 348  involuntary context switches\n           457110185  instructions retired\n           317414984  cycles elapsed\n           278956048  peak memory footprint\n",
+    "exit": 0
+  },
+  {
+    "flag": "--initial-old-space-size=32",
+    "round": 2,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":46,\"ticks\":25}\n",
+    "stderr": "        0.73 real         0.01 user         0.06 sys\n           293666816  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               18173  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  59  voluntary context switches\n                 362  involuntary context switches\n           461937250  instructions retired\n           315532043  cycles elapsed\n           279005200  peak memory footprint\n",
+    "exit": 0
+  },
+  {
+    "flag": "--initial-old-space-size=32",
+    "round": 3,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":47,\"ticks\":25}\n",
+    "stderr": "        0.74 real         0.01 user         0.06 sys\n           293568512  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               18169  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  67  voluntary context switches\n                 417  involuntary context switches\n           464622417  instructions retired\n           322660959  cycles elapsed\n           278956000  peak memory footprint\n",
+    "exit": 0
+  },
+  {
+    "flag": "--heap-growing-percent=10",
+    "round": 1,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":69,\"ticks\":34}\n",
+    "stderr": "        0.89 real         0.00 user         0.09 sys\n           628965376  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               38636  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  71  voluntary context switches\n                 634  involuntary context switches\n           563738006  instructions retired\n           369041916  cycles elapsed\n           614861080  peak memory footprint\n",
+    "exit": 0
+  },
+  {
+    "flag": "--heap-growing-percent=10",
+    "round": 2,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":59,\"ticks\":32}\n",
+    "stderr": "        0.88 real         0.00 user         0.08 sys\n           629014528  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               38617  page reclaims\n                  22  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  75  voluntary context switches\n                 471  involuntary context switches\n           564329907  instructions retired\n           355232215  cycles elapsed\n           614926640  peak memory footprint\n",
+    "exit": 0
+  },
+  {
+    "flag": "--heap-growing-percent=10",
+    "round": 3,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":94,\"ticks\":48}\n",
+    "stderr": "        0.93 real         0.00 user         0.09 sys\n           628981760  maximum resident set size\n                   0  average shared memory size\n                   0  average unshared data size\n                   0  average unshared stack size\n               38637  page reclaims\n                   0  page faults\n                   0  swaps\n                   0  block input operations\n                   0  block output operations\n                   0  messages sent\n                   0  messages received\n                   0  signals received\n                  67  voluntary context switches\n                 619  involuntary context switches\n           565423596  instructions retired\n           364489725  cycles elapsed\n           614910280  peak memory footprint\n",
+    "exit": 0
+  }
+]

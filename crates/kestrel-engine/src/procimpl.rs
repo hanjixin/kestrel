@@ -28,6 +28,8 @@ pub struct SpawnOpts {
     /// Create a unix socketpair; the child gets its end as an inherited fd (KESTREL_IPC_FD).
     #[serde(default)]
     pub ipc: bool,
+    #[serde(default)]
+    pub serialization: Option<String>,
 }
 
 struct Child {
@@ -109,6 +111,9 @@ pub fn op_cp_spawn(state: &mut OpState, #[serde] o: SpawnOpts) -> Result<(u32, u
         unsafe { libc::fcntl(b.as_raw_fd(), libc::F_SETFD, 0); }
         std_cmd.env("KESTREL_IPC_FD", b.as_raw_fd().to_string());
         std_cmd.env("NODE_CHANNEL_FD", b.as_raw_fd().to_string());
+        let serialization = o.serialization.as_deref().unwrap_or("json");
+        std_cmd.env("NODE_CHANNEL_SERIALIZATION_MODE", serialization);
+        std_cmd.env("KESTREL_IPC_SERIALIZATION", serialization);
         parent_fd = a.into_raw_fd();
         child_end = Some(b);
     }
@@ -293,7 +298,7 @@ pub fn op_cp_spawn_sync(#[serde] o: SpawnOpts, #[buffer(copy)] input: Vec<u8>, t
 #[derive(Default)]
 struct Files {
     next: i32,
-    map: HashMap<i32, std::fs::File>,
+    map: HashMap<i32, std::sync::Arc<std::fs::File>>,
 }
 fn files(state: &mut OpState) -> &mut Files {
     if state.try_borrow::<Files>().is_none() {
@@ -312,9 +317,7 @@ fn fs_err(e: std::io::Error, syscall: &str, path: &str) -> JsErrorBox {
     JsErrorBox::new("Error", format!("{code}: {}, {syscall} '{path}'", e.kind()))
 }
 
-/// flags: Node's string flags ("r", "r+", "w", "w+", "a", "a+", "wx", "ax").
-#[op2(fast)]
-pub fn op_fd_open(state: &mut OpState, #[string] path: &str, #[string] flags: &str, mode: u32) -> Result<i32, JsErrorBox> {
+fn open_file(path: &str, flags: &str, mode: u32) -> Result<std::fs::File, JsErrorBox> {
     let mut o = std::fs::OpenOptions::new();
     match flags {
         "r" => { o.read(true); }
@@ -336,10 +339,17 @@ pub fn op_fd_open(state: &mut OpState, #[string] path: &str, #[string] flags: &s
     }
     let _ = mode;
     let f = o.open(path).map_err(|e| fs_err(e, "open", path))?;
+    Ok(f)
+}
+
+/// flags: Node's string flags ("r", "r+", "w", "w+", "a", "a+", "wx", "ax").
+#[op2(fast)]
+pub fn op_fd_open(state: &mut OpState, #[string] path: &str, #[string] flags: &str, mode: u32) -> Result<i32, JsErrorBox> {
+    let f = open_file(path, flags, mode)?;
     let t = files(state);
     let fd = t.next;
     t.next += 1;
-    t.map.insert(fd, f);
+    t.map.insert(fd, std::sync::Arc::new(f));
     Ok(fd)
 }
 
@@ -358,7 +368,7 @@ pub fn op_fd_read(state: &mut OpState, fd: i32, #[buffer] buf: &mut [u8], pos: f
         let n = std::io::stdin().read(buf).map_err(|e| fs_err(e, "read", "stdin"))?;
         return Ok(n as u32);
     }
-    let f = files(state).map.get_mut(&fd).ok_or_else(|| JsErrorBox::new("Error", "EBADF: bad file descriptor, read"))?;
+    let mut f = &**files(state).map.get(&fd).ok_or_else(|| JsErrorBox::new("Error", "EBADF: bad file descriptor, read"))?;
     let n = if pos >= 0.0 {
         #[cfg(unix)]
         { use std::os::unix::fs::FileExt; f.read_at(buf, pos as u64).map_err(|e| fs_err(e, "read", ""))? }
@@ -381,7 +391,7 @@ pub fn op_fd_write(state: &mut OpState, fd: i32, #[buffer] buf: &[u8], pos: f64)
         r.map_err(|e| fs_err(e, "write", ""))?;
         return Ok(buf.len() as u32);
     }
-    let f = files(state).map.get_mut(&fd).ok_or_else(|| JsErrorBox::new("Error", "EBADF: bad file descriptor, write"))?;
+    let mut f = &**files(state).map.get(&fd).ok_or_else(|| JsErrorBox::new("Error", "EBADF: bad file descriptor, write"))?;
     let n = if pos >= 0.0 {
         #[cfg(unix)]
         { use std::os::unix::fs::FileExt; f.write_at(buf, pos as u64).map_err(|e| fs_err(e, "write", ""))? }
@@ -654,4 +664,72 @@ pub fn op_verify(#[string] scheme: &str, #[string] digest: &str, #[string] key_p
         }
         s => Err(JsErrorBox::type_error(format!("unsupported scheme {s}"))),
     }
+}
+
+// Async file operations keep an Arc to the open file, avoiding a dup syscall per
+// chunk and preventing close/reopen races while an operation is on the pool.
+fn async_file(state: &mut OpState, fd: i32) -> Result<std::sync::Arc<std::fs::File>, JsErrorBox> {
+    files(state).map.get(&fd).cloned().ok_or_else(|| JsErrorBox::generic("EBADF: bad file descriptor"))
+}
+#[op2]
+pub async fn op_fd_open_async(state: Rc<RefCell<OpState>>, #[string] path: String, #[string] flags: String, mode: u32) -> Result<i32, JsErrorBox> {
+    let file = tokio::task::spawn_blocking(move || open_file(&path, &flags, mode)).await.map_err(generic)??;
+    let mut state = state.borrow_mut();
+    let table = files(&mut state);
+    let fd = table.next; table.next += 1;
+    table.map.insert(fd, std::sync::Arc::new(file));
+    Ok(fd)
+}
+#[op2]
+#[buffer]
+pub async fn op_fd_read_async(state: Rc<RefCell<OpState>>, fd: i32, len: u32, pos: f64) -> Result<Vec<u8>, JsErrorBox> {
+    let file = if fd <= 2 { None } else { Some(async_file(&mut state.borrow_mut(), fd)?) };
+    tokio::task::spawn_blocking(move || {
+        use std::io::Read;
+        let mut bytes = vec![0; len as usize];
+        let n = if fd == 0 { std::io::stdin().read(&mut bytes) } else {
+        let file = file.ok_or_else(|| JsErrorBox::generic("EBADF: invalid read descriptor"))?;
+        if pos >= 0.0 {
+            #[cfg(unix)]
+            { use std::os::unix::fs::FileExt; file.read_at(&mut bytes, pos as u64) }
+            #[cfg(not(unix))]
+            { use std::io::{Seek, SeekFrom}; let mut f = &*file; f.seek(SeekFrom::Start(pos as u64))?; f.read(&mut bytes) }
+        } else { (&*file).read(&mut bytes) } }.map_err(|e| fs_err(e, "read", ""))?;
+        bytes.truncate(n); Ok(bytes)
+    }).await.map_err(generic)?
+}
+#[op2]
+pub async fn op_fd_write_async(state: Rc<RefCell<OpState>>, fd: i32, #[buffer(copy)] bytes: Vec<u8>, pos: f64) -> Result<u32, JsErrorBox> {
+    let file = if fd <= 2 { None } else { Some(async_file(&mut state.borrow_mut(), fd)?) };
+    tokio::task::spawn_blocking(move || {
+        use std::io::Write;
+        let n = if fd == 1 { std::io::stdout().write(&bytes) } else if fd == 2 { std::io::stderr().write(&bytes) } else {
+        let file = file.ok_or_else(|| JsErrorBox::generic("EBADF: invalid write descriptor"))?;
+        if pos >= 0.0 {
+            #[cfg(unix)]
+            { use std::os::unix::fs::FileExt; file.write_at(&bytes, pos as u64) }
+            #[cfg(not(unix))]
+            { use std::io::{Seek, SeekFrom}; let mut f = &*file; f.seek(SeekFrom::Start(pos as u64))?; f.write(&bytes) }
+        } else { (&*file).write(&bytes) } }.map_err(|e| fs_err(e, "write", ""))?;
+        Ok(n as u32)
+    }).await.map_err(generic)?
+}
+#[op2]
+pub async fn op_fd_close_async(state: Rc<RefCell<OpState>>, fd: i32) -> Result<(), JsErrorBox> {
+    let file = files(&mut state.borrow_mut()).map.remove(&fd).ok_or_else(|| JsErrorBox::generic("EBADF: bad file descriptor, close"))?;
+    tokio::task::spawn_blocking(move || drop(file)).await.map_err(generic)
+}
+
+#[op2]
+#[serde]
+pub async fn op_fd_stat_async(state: Rc<RefCell<OpState>>, fd: i32) -> Result<super::nodeimpl::StatInfo, JsErrorBox> {
+    let file = async_file(&mut state.borrow_mut(), fd)?;
+    tokio::task::spawn_blocking(move || file.metadata().map(|m| super::nodeimpl::stat_from_metadata(&m)).map_err(|e| fs_err(e, "fstat", ""))).await.map_err(generic)?
+}
+#[op2]
+pub async fn op_fd_control_async(state: Rc<RefCell<OpState>>, fd: i32, truncate: bool, len: f64) -> Result<(), JsErrorBox> {
+    let file = async_file(&mut state.borrow_mut(), fd)?;
+    tokio::task::spawn_blocking(move || {
+        if truncate { file.set_len(len as u64) } else { file.sync_all() }.map_err(|e| fs_err(e, if truncate { "ftruncate" } else { "fsync" }, ""))
+    }).await.map_err(generic)?
 }

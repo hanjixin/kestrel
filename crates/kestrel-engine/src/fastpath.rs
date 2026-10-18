@@ -164,6 +164,29 @@ pub fn adopt(rid: u32, rx: httpimpl::ConnRx) -> bool {
     adopt_epoll(rid, rx)
 }
 
+pub fn close_server(rid: u32) {
+    let connections = with_fast(|fast| {
+        fast.rxs.retain_mut(|(id, rx)| {
+            if *id != rid { return true; }
+            rx.close();
+            while let Ok((_, live)) = rx.try_recv() {
+                live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            false
+        });
+        fast.conns.iter_mut().enumerate().filter_map(|(key, slot)| {
+            if slot.as_ref().is_some_and(|c| c.rid == rid) { slot.take().map(|c| (key, c)) } else { None }
+        }).collect::<Vec<_>>()
+    }).unwrap_or_default();
+    for (key, mut conn) in connections {
+        conn.close_after = true;
+        let alive = conn.waiting || !conn.wbuf.is_empty();
+        finish(conn, key, alive);
+    }
+    #[cfg(target_os = "linux")]
+    crate::uring::close_server(rid);
+}
+
 fn start_epoll() -> bool {
     if FAST.with(|f| f.borrow().is_some()) {
         return true;
@@ -415,6 +438,9 @@ fn handle_events_batched(evs: &[Event]) -> bool {
         });
         for (i, (key, mut conn, _, _)) in taken.into_iter().enumerate() {
             let mut a = alive[i];
+            // A later handler in this batch may have closed the server while
+            // this earlier connection was also absent from the shared table.
+            conn.close_after |= httpimpl::is_closing(conn.rid);
             let r = sresults[i];
             if a && r != i32::MIN {
                 if r > 0 {
@@ -423,7 +449,7 @@ fn handle_events_batched(evs: &[Event]) -> bool {
                     a = false;
                 }
             }
-            if a && conn.wbuf.is_empty() && conn.close_after {
+            if a && !conn.waiting && conn.wbuf.is_empty() && conn.close_after {
                 a = false;
             }
             finish(conn, key, a);
@@ -484,7 +510,7 @@ fn handle_event(ev: Event) {
     if alive && ev.writable && !conn.wbuf.is_empty() {
         alive = flush(&mut conn);
     }
-    if alive && conn.wbuf.is_empty() && conn.close_after {
+    if alive && !conn.waiting && conn.wbuf.is_empty() && conn.close_after {
         alive = false;
     }
     finish(conn, key, alive);
@@ -568,7 +594,7 @@ fn process_buffer(conn: &mut Conn, key: usize) -> bool {
             }
             let rest = conn.rbuf.split_off(0);
             if let Some(stream) = take_stream(conn) {
-                httpimpl::hyper_takeover(conn.rid, stream, rest);
+                httpimpl::hyper_takeover(conn.rid, stream, rest, conn.live.take());
             }
             return false;
         }
@@ -578,13 +604,13 @@ fn process_buffer(conn: &mut Conn, key: usize) -> bool {
             Ok(httparse::Status::Complete(n)) => n,
             Ok(httparse::Status::Partial) => {
                 if conn.rbuf.len() > MAX_HEADER {
-                    queue_response(conn, Outgoing { status: 431, headers: String::new(), body: Bytes::from_static(b"Request Header Fields Too Large") }, true);
+                    queue_response(conn, Outgoing { status: 431, headers: String::new(), body: Bytes::from_static(b"Request Header Fields Too Large"), stream: None }, true);
                     return flush(conn);
                 }
                 break;
             }
             Err(_) => {
-                queue_response(conn, Outgoing { status: 400, headers: String::new(), body: Bytes::from_static(b"Bad Request") }, true);
+                queue_response(conn, Outgoing { status: 400, headers: String::new(), body: Bytes::from_static(b"Bad Request"), stream: None }, true);
                 return flush(conn);
             }
         };
@@ -616,7 +642,7 @@ fn process_buffer(conn: &mut Conn, key: usize) -> bool {
             // Hand the connection to hyper with the unread bytes.
             let rest = conn.rbuf.split_off(0);
             if let Some(stream) = take_stream(conn) {
-                httpimpl::hyper_takeover(conn.rid, stream, rest);
+                httpimpl::hyper_takeover(conn.rid, stream, rest, conn.live.take());
             }
             return false;
         }
@@ -624,8 +650,12 @@ fn process_buffer(conn: &mut Conn, key: usize) -> bool {
         conn.rbuf.drain(..parsed);
         flog(|| format!("dispatch rid={} {}", conn.rid, raw.path()));
         let step = httpimpl::dispatch_raw(conn.rid, raw);
+        // close() may run inside the JS handler while this connection is taken
+        // out of the table, so close_server() could not mark it there.
+        close_after |= httpimpl::is_closing(conn.rid);
         match step {
             Step::Done(out) => {
+                if out.stream.is_some() { stream_response(conn, out, close_after); return false; }
                 queue_response(conn, out, close_after);
                 if close_after {
                     return flush(conn);
@@ -655,11 +685,17 @@ fn take_stream(conn: &mut Conn) -> Option<std::net::TcpStream> {
     Some(dup)
 }
 
+fn stream_response(conn: &mut Conn, out: Outgoing, close: bool) {
+    if let Some(socket) = take_stream(conn) {
+        httpimpl::streaming_takeover(conn.rid, socket, std::mem::take(&mut conn.rbuf), std::mem::take(&mut conn.wbuf), out, close, conn.live.take());
+    }
+}
+
 fn spawn_completion(key: usize, gen: u32, rrx: oneshot::Receiver<Outgoing>) {
     let tx = with_fast(|f| f.done_tx.clone());
     let Some(tx) = tx else { return };
     tokio::spawn(async move {
-        let out = rrx.await.unwrap_or(Outgoing { status: 500, headers: String::new(), body: Bytes::from_static(b"Internal Server Error") });
+        let out = rrx.await.unwrap_or(Outgoing { status: 500, headers: String::new(), body: Bytes::from_static(b"Internal Server Error"), stream: None });
         let _ = tx.send((key, gen, out));
     });
 }
@@ -673,9 +709,14 @@ fn complete_async(key: usize, gen: u32, out: Outgoing) {
     }
     conn.waiting = false;
     let close_after = conn.close_after;
+    if out.stream.is_some() {
+        stream_response(&mut conn, out, close_after);
+        finish(conn, key, false);
+        return;
+    }
     queue_response(&mut conn, out, close_after);
     let mut alive = if close_after { flush(&mut conn) } else { process_buffer(&mut conn, key) };
-    if alive && conn.wbuf.is_empty() && conn.close_after {
+    if alive && !conn.waiting && conn.wbuf.is_empty() && conn.close_after {
         alive = false;
     }
     // Re-arm read interest (dropped while the handler was pending) unless we went async again.
@@ -788,7 +829,11 @@ pub(crate) fn write_response(w: &mut Vec<u8>, out: &Outgoing, close: bool) {
     if !has_ct {
         w.extend_from_slice(b"content-type: text/plain;charset=UTF-8\r\n");
     }
-    if !has_cl {
+    if out.stream.as_ref().is_some_and(|s| s.suppress) {
+        // HEAD/204/304 have no response payload or chunk terminator.
+    } else if !has_cl && out.stream.is_some() {
+        w.extend_from_slice(b"transfer-encoding: chunked\r\n");
+    } else if !has_cl {
         w.extend_from_slice(b"content-length: ");
         push_num(w, out.body.len());
         w.extend_from_slice(b"\r\n");

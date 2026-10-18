@@ -1,3 +1,4 @@
+pub mod cloneimpl;
 pub mod esm2cjs;
 pub mod fastpath;
 pub mod h2impl;

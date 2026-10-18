@@ -1,0 +1,20 @@
+[
+  {
+    "flag": "",
+    "stdout": "[Object: null prototype] {\n  total_heap_size: 3555328,\n  total_heap_size_executable: 262144,\n  total_physical_size: 3555328,\n  total_available_size: 1567861584,\n  used_heap_size: 1958712,\n  heap_size_limit: 1568669696,\n  malloced_memory: 147504,\n  peak_malloced_memory: 98304,\n  external_memory: 101128600,\n  number_of_native_contexts: 1,\n  number_of_detached_contexts: 0\n}\n{\"bytes\":536870912,\"milliseconds\":54,\"ticks\":28}\n",
+    "stderr": "",
+    "exit": 0
+  },
+  {
+    "flag": "--initial-heap-size=256",
+    "stdout": "[Object: null prototype] {\n  total_heap_size: 3293184,\n  total_heap_size_executable: 262144,\n  total_physical_size: 3293184,\n  total_available_size: 1582713000,\n  used_heap_size: 1960688,\n  heap_size_limit: 1568669696,\n  malloced_memory: 147504,\n  peak_malloced_memory: 98304,\n  external_memory: 134683032,\n  number_of_native_contexts: 1,\n  number_of_detached_contexts: 0\n}\n{\"bytes\":536870912,\"milliseconds\":68,\"ticks\":33}\n",
+    "stderr": "",
+    "exit": 0
+  },
+  {
+    "flag": "--initial-old-space-size=16",
+    "stdout": "[Object: null prototype] {\n  total_heap_size: 3555328,\n  total_heap_size_executable: 262144,\n  total_physical_size: 3555328,\n  total_available_size: 1567861792,\n  used_heap_size: 1958568,\n  heap_size_limit: 1568669696,\n  malloced_memory: 147504,\n  peak_malloced_memory: 98304,\n  external_memory: 101128600,\n  number_of_native_contexts: 1,\n  number_of_detached_contexts: 0\n}\n{\"bytes\":536870912,\"milliseconds\":51,\"ticks\":27}\n",
+    "stderr": "",
+    "exit": 0
+  }
+]

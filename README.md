@@ -1,6 +1,6 @@
 # kestrel
 
-A JavaScript/TypeScript runtime that keeps JavaScript's semantics and Node's module ecosystem, and is faster than Node everywhere measured: startup, memory, CPU-bound code, and HTTP serving on one core and on all cores.
+A JavaScript/TypeScript runtime combining V8, a growing Node compatibility layer, an optimized HTTP server, and an ahead-of-time tier for annotated numeric functions. Performance depends on the workload; measured results and compatibility limits are listed below.
 
 How it gets both:
 
@@ -35,7 +35,7 @@ KESTREL_REQUIRE_LOG=1 ...                                          # trace requi
 KESTREL_YOUNG_MB=32 ...                                            # young-generation semi-space per isolate (default 32 main / 8 workers)
 KESTREL_V8_FLAGS="..." ...                                         # extra raw V8 flags
 KESTREL_FASTPATH=0 ...                                             # serve everything through hyper (no level-triggered fast loop)
-KESTREL_URING=1|0 ...                                              # Linux: force the io_uring or the epoll fast loop (default: io_uring with 4+ workers)
+KESTREL_URING=1|0 ...                                              # Linux: force io_uring or epoll (default: selected per connection count)
 KESTREL_PACK=16 ...                                                # connections packed per worker before the acceptor spreads (0 = least-loaded only)
 KESTREL_BATCH_IO=1 ...                                             # Linux: epoll readiness + batched io_uring reads/writes per wake-up (no gain on 5.15 kernels)
 ./target/release/kestrel --inspect[=[host:]port] app.js            # DevTools endpoint (chrome://inspect, VS Code); --inspect-brk pauses on the first line
@@ -45,8 +45,21 @@ A Linux build is produced in Docker with the `rust:bullseye` image (glibc 2.31, 
 
 ## Compatibility status
 
-Verified by `test/compat` (each file runs under node and kestrel and the outputs are compared; `cert.pem`/`key.pem` there are a self-signed certificate for 127.0.0.1 used only by the local TLS tests):
+The default differential gate passes **34/34 cases on macOS and Linux**. Each case must exit successfully under both Node and Kestrel with identical stdout. The latest Linux run also validates io_uring, batched I/O and Hyper-only HTTP modes, including real-socket backpressure.
 
+Coverage in `test/compat` includes:
+
+- `http_end_strings.mjs`, `http_end_buffer.mjs`: response encodings, Unicode, streamed strings, end callbacks, invalid-encoding recovery and mutable-buffer ownership.
+- `http_request_metadata.mjs`, `http_early_body_read.mjs`: original request targets, duplicate headers and request-body handoff.
+- `worker_clone.mjs`, `fork_advanced.mjs`: structured clone, transferable ArrayBuffers and advanced child-process IPC.
+- `fs_async.mjs`, `fs_handles.mjs`, `builtin_subpaths.mjs`: asynchronous filesystem progress, file handles and builtin subpath imports.
+
+- `fs_streams.mjs`: file-stream reads/writes through direct constructors, calls without `new`, legacy `util.inherits` subclasses, ES subclasses, and factory functions; checks range reads, byte counts, and constructor options.
+- `fork_disconnect.mjs`: disconnecting an IPC channel with writes larger than the socket buffer must let the child terminate without hanging.
+- `http_implicit_headers.mjs`: the implicit response-header hook used by compression middleware invokes `writeHead` and commits headers once.
+- `http_async_close.mjs`: a request with `Connection: close` must receive its asynchronous response before the connection closes.
+
+- `server_close.mjs`, `server_close_active.mjs`, `server_close_idle.mjs`: listener/port release for HTTP and HTTP/2, graceful GET/POST response completion, idle keep-alive closure, independent servers, and reopening a listener. These tests exit naturally, without `process.exit()`. The HTTP cases also run with `KESTREL_FASTPATH=0` to cover hyper.
 - `builtins.cjs`: path, fs, util.inspect/format, events, Buffer, crypto (hashes, HMAC, PBKDF2, scrypt, HKDF, AES-GCM/CBC/CTR), zlib (gzip, deflate, brotli), URL/URLSearchParams, querystring, string_decoder, streams + pipeline, os, process, assert. Output is identical to Node 22.
 - `proc.mjs`: child_process `spawn`/`exec`/`execFile`/`execSync`/`execFileSync`/`spawnSync` with piped stdio, exit codes, ENOENT; fd-level fs (`openSync`/`readSync`/`writeSync`/`fstatSync`/`ftruncateSync`, `fs.promises.open` FileHandle). Identical to Node.
 - `net.mjs`, `unix.mjs`: `net.createServer` + `net.connect` echo over TCP and Unix domain sockets, `tls.createServer` + `tls.connect`, `fs.watch` events, ECONNREFUSED. Identical.
@@ -69,7 +82,43 @@ Verified by `test/compat` (each file runs under node and kestrel and the outputs
 
 Builtins: assert, async_hooks (`AsyncLocalStorage`, `AsyncResource`; `createHook` is a no-op), buffer, child_process (incl. `fork` IPC), cluster (processes sharing a port via `SO_REUSEPORT`), constants, crypto (hashes, HMAC, KDFs, AES/ChaCha ciphers, RSA/ECDSA sign/verify and key pairs, webcrypto subset), dgram (+multicast), dns, events, fs (+promises, fd API, streams, `watch`/`watchFile`), http, http2 (servers over TLS/ALPN and h2c, client, stream and compatibility APIs, server push, ping, flow control; over the `h2` crate), https, inspector (in-process CDP sessions and the external endpoint: `--inspect`, `--inspect-brk`, `inspector.open()`/`url()`/`close()`/`waitForDebugger()`), module, net (TCP + Unix sockets), os, path, perf_hooks, process, querystring, readline, stream, string_decoder, sys, timers, tls (client and server), tty, url, util, v8 (heap statistics, serialize), vm (scripts in this or a fresh context, `SourceTextModule`, `SyntheticModule`, `importModuleDynamically` as a callback or `USE_MAIN_CONTEXT_DEFAULT_LOADER`, `initializeImportMeta`), worker_threads, zlib (+brotli). Native addons: Node-API (N-API) modules load through `require()`/`process.dlopen` (the `napi_*` and `uv_*` symbols are exported from the binary, `process.versions.napi` is 10); the implementation is `crates/kestrel-napi`, a vendored copy of deno_napi 0.190.0 (MIT) matching the embedded deno_core, minus Deno's permission and embedded-loader hooks. Addons built against the legacy V8/`nan` API (for example better-sqlite3) are not supported, as in Deno and Bun.
 
-## Measurements
+## Latest measured performance — 2026-10-18
+
+Same-host, single-worker HTTP comparisons using `wrk -t2 -c64`, with 1 second warmup per sample. Linux uses six rounds of 5 seconds with unrestricted CPU scheduling; macOS uses three rounds of 3 seconds. Values are median requests/second. Runtime order is rotated between rounds.
+
+| Platform / workload | Kestrel | Bun | Native Node | Kestrel vs Bun |
+|---|---:|---:|---:|---:|
+| Linux x86_64, native HTTP API | 74,121 | 72,375 | — | +2.4% |
+| Linux x86_64, identical `node:http` source | 64,400 | 55,964 | 35,789 | **+15.1%** |
+| macOS arm64, native HTTP API | 340,157 | 273,014 | — | +24.6% |
+| macOS arm64, identical `node:http` source | 254,768 | 185,148 | 142,523 | **+37.6%** |
+
+Linux: AMD EPYC 7542, Bun 1.4.3, Node 22.12.0. macOS: Apple M4, Bun 1.3.11, Node 25.6.1. Compare runtimes within each row; different platforms and runtime versions are not directly comparable. Node is compared through its native `node:http` API using the same source on all three runtimes.
+
+Linux I/O medians (lower is better):
+
+| Workload | Kestrel | Bun | Node |
+|---|---:|---:|---:|
+| Worker: 200 × 1 MiB transfer round trips | 17.5 ms | 91.5 ms | 38 ms |
+| Cached reads: 16 × 32 MiB | 164 ms | 301 ms | 508 ms |
+
+The latest optimization preserves immutable UTF-8 response strings until native serialization, avoiding intermediate Buffer allocations and copies. Mutable Buffer responses retain an owned snapshot; streaming responses retain backpressure. A controlled Linux before/after comparison with fixed CPU placement measured **11.9% higher `node:http` throughput**. The runtime also uses a 32 MiB initial old-space budget, without lowering its maximum heap limit; explicit initial heap flags in `KESTREL_V8_FLAGS` take precedence.
+
+**Limits:** these are microbenchmarks, not universal performance guarantees. With unrestricted scheduling, Linux `node:http` p99 remains slightly higher than Bun (2.500 vs 2.265 ms), and native HTTP RSS is higher (46.4 vs 32.5 MiB). Kestrel won 5/6 `node:http` pairs and 4/6 native HTTP pairs in that run. Cached file reads do not measure disk throughput. Multicore scaling and framework throughput were not remeasured in this round.
+
+See the [full report, raw samples, CPU profiles and validation logs](docs/performance/2026-10-18-linux-strings/README.md), including fixed-CPU and unrestricted runs and rejected intermediate results.
+
+```sh
+python3 test/compat/run.py
+python3 test/test_compat_gate.py
+python3 test/stream_backpressure.py
+python3 bench/compare_bun.py --include-node --rounds 6 --duration 5 --output-dir /tmp/kestrel-comparison
+```
+
+## Historical measurements — 2026-10-16
+
+The following results use earlier revisions, different concurrency settings and shorter historical test coverage. They are retained for context; use the report above for the current revision.
+
 
 ### Apple M4 (10 cores), macOS, 2026-10-16
 
@@ -134,13 +183,7 @@ The single-worker tail at 4096 connections is dominated by the first second, whe
 
 CPU on the same host: `fib(35)` node 110 ms, bun 71 ms, kestrel V8-only 108 ms, native tier 70 ms; cold int-heavy benchmark kestrel V8-only 297 ms, native tier 155 ms.
 
-What this says, honestly:
-
-- Startup and memory beat Node and Bun.
-- The native tier beats V8 on call-heavy and integer-heavy code (1.6× and 1.5×; 2.8× over Node on the cold benchmark). On float loops V8's TurboFan is already at the hardware's latency floor and the native tier ties it.
-- HTTP per core: 27–36 % ahead of Bun on macOS at 256 and 4096 connections, 15–18 % ahead on Linux at 256 connections and 9–22 % at 4096, with a lower p99 everywhere. `perf` on the Linux node shows 85 % of the time in the kernel's TCP/epoll paths and an in-server latency max of 300 µs, so per-core HTTP is syscall-bound; the fast path got there by doing one `read` and one `write` per request. About 2.5× Node per core on Linux, 1.8–2.3× on macOS.
-- HTTP on all cores, default vs default (how both ship: kestrel `workers: "auto"` = 64 physical cores, Bun 128-process `reusePort`): four interleaved reps on an idle host, kestrel ahead in every rep at both connection counts. 4096 connections: kestrel 1.50 / 1.52 / 1.52 / 1.53 M against Bun 1.27 / 1.29 / 1.31 / 1.36 M (+16 % mean), p99 2.6–3.1 ms against 3.0–3.3 ms. 256 connections: kestrel 483 / 486 / 491 / 509 k against Bun 459 / 460 / 460 / 465 k (+7 % mean), lower p99 in every rep. Against a 128-process Node cluster it is 1.75× at 4096. The default comparison above is how both runtimes ship and is a clean throughput win. Forced instead to each runtime's best hand-picked worker count (32 threads vs 32 processes), throughput converges to the host's loopback-TCP ceiling: five interleaved pairs gave kestrel 1.67 / 1.63 / 1.66 / 1.66 / 1.63 M against Bun 1.65 / 1.63 / 1.62 / 1.58 / 1.63 M (ahead or level, within noise), and replacing kestrel's acceptor with Bun's own per-worker `SO_REUSEPORT` model produced the same ~1.62 M — so that ceiling is the kernel, not the acceptor design. At that forced setting the repeatable win is tail latency, about 40 % lower (p99 2.8–3.2 ms against 5.2–5.5 ms). One kestrel worker under 4096 connections serves 61 / 64 / 66 / 65 / 61 k against one Bun process at 60 / 55 / 58 / 58 / 56 k over five interleaved pairs — ahead in all five, p99 102–112 ms against 102–178 ms. That single-worker case was a tie until the read path stopped zero-filling a 16 KiB buffer per request; with thousands of connections that memset streamed a cold buffer through the cache on every request, and removing it was worth 10 % on Linux and 20–30 % on macOS. These numbers need an otherwise-idle host: leftover server processes from an earlier run share the port and collapse the single-worker figure, so the benchmark scripts kill stray `kestrel`/`bun`/`node` processes first. Per-core HTTP remains kernel-bound on both runtimes (`perf`: 87 % of cycles in the kernel's TCP, epoll and conntrack paths).
-- HTTP per core on macOS: 352 k on one worker against Bun's 276 k at 256 connections, 306 k against 225 k at 4096.
+These historical measurements cover specific startup, CPU and HTTP configurations. They do not establish a general latency or memory advantage for the current revision.
 
 ## Layout
 
@@ -156,6 +199,33 @@ bench/                  hello servers, macOS/Linux-Docker scripts, bench/remote 
 docs/ARCHITECTURE.md    design, invariants, roadmap
 ```
 
-## License
+### Compatibility regression gate
 
-Apache-2.0 (see `LICENSE`). `crates/kestrel-napi` is derived from Deno's Node-API implementation and stays under the MIT license (see `crates/kestrel-napi/LICENSE`).
+Run `python3 test/compat/run.py` after `cargo build --release`. Each case must exit
+successfully on both Node and Kestrel and produce identical stdout. Missing tests,
+nonzero exits, output differences and process-group timeouts fail the command.
+`python3 test/test_compat_gate.py` verifies the gate's failure behavior.
+`python3 test/stream_backpressure.py` uses a real socket client that stops reading,
+then verifies that the bounded producer resumes and delivers the complete body.
+
+The new coverage includes builtin `assert/strict` and `stream/promises` imports,
+nonblocking filesystem reads (FIFO progress), incremental file streams, streamed
+HTTP responses, POST bodies after flushing headers, client disconnects, Worker
+cyclic graphs and ArrayBuffer transfer, and advanced fork IPC. Complete HTTP
+responses still use the fast path; a connection moves to the streaming transport
+only when it sends a streaming response. Transferable Worker ArrayBuffers move
+backing-store ownership without copying their contents.
+
+This remains a compatibility implementation, not a complete Node replacement.
+HTTP clients and request bodies still buffer complete bodies. Worker `eval`,
+transferring MessagePorts, BroadcastChannel, fs promises watch/glob and some
+less common filesystem options remain incomplete. Advanced IPC uses the embedded
+V8 wire format: Kestrel-to-Kestrel is covered, but the current Node 25 runtime
+rejects Kestrel's newer serialization version. Use JSON for cross-runtime IPC.
+Linux io_uring, batched I/O and Hyper-only modes passed the focused HTTP and
+real-socket backpressure checks; see the [Linux validation and three-runtime comparison](docs/performance/2026-10-18-linux/README.md).
+Use `python3 bench/compare.py --before /path/to/baseline-kestrel` for alternating
+same-host throughput/RSS comparisons; `bench/worker_transfer.mjs` and
+`bench/fs_read.mjs` measure message transfers and file reads separately.
+
+Earlier reports are retained for traceability: [compatibility-round verification](docs/performance/2026-10-18/README.md), [macOS Bun comparison](docs/performance/2026-10-18-bun-final/README.md), and [Linux baseline before the string-response optimization](docs/performance/2026-10-18-linux/README.md). The latest results are summarized above and in the [current report](docs/performance/2026-10-18-linux-strings/README.md).

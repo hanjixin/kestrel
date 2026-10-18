@@ -1,0 +1,6 @@
+[fast w0] adopt rid=0
+[hub :44141] -> sender 0 of 1
+[fast w0] register rid=0
+[fast w0] io_uring loop started
+[fast w0] uring register rid=0
+[dispatch w0] rid=0 handler=true

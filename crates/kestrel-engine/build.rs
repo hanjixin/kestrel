@@ -1,3 +1,5 @@
+#[path = "src/cloneimpl.rs"]
+mod cloneimpl;
 // Bakes the bootstrap JS into a V8 startup snapshot so `kestrel run` skips
 // parsing/evaluating runtime code on every launch.
 #[path = "src/ops.rs"]
@@ -59,14 +61,20 @@ mod httpimpl {
     pub static MAIN: std::sync::OnceLock<(std::path::PathBuf, Vec<String>)> = std::sync::OnceLock::new();
     pub fn listen(_: &mut OpState, _: &str, _: u16, _: u32) -> Result<u32, JsErrorBox> { unreachable!() }
     pub async fn accept(_: Rc<RefCell<OpState>>, _: u32) -> Result<Vec<u32>, JsErrorBox> { unreachable!() }
+    pub async fn close(_: Rc<RefCell<OpState>>, _: u32) { unreachable!() }
     pub fn method(_: &mut OpState, _: u32) -> String { unreachable!() }
     pub fn version(_: &mut OpState, _: u32) -> u32 { unreachable!() }
     pub fn port(_: &mut OpState, _: u32) -> u16 { unreachable!() }
     pub fn set_handler(_: &mut deno_core::v8::PinScope, _: Rc<RefCell<OpState>>, _: u32, _: deno_core::v8::Local<deno_core::v8::Function>) { unreachable!() }
     pub fn url(_: &mut OpState, _: u32) -> String { unreachable!() }
     pub fn respond(_: &mut OpState, _: u32, _: u16, _: &str, _: bytes::Bytes) -> Result<(), JsErrorBox> { unreachable!() }
+    pub fn stream_start(_: &mut OpState, _: u32, _: u16, _: &str) -> Result<u32, JsErrorBox> { unreachable!() }
+    pub async fn stream_write(_: Rc<RefCell<OpState>>, _: u32, _: Vec<u8>) -> Result<(), JsErrorBox> { unreachable!() }
+    pub async fn stream_closed(_: Rc<RefCell<OpState>>, _: u32) -> bool { unreachable!() }
+    pub fn stream_end(_: &mut OpState, _: u32, _: bool) { unreachable!() }
     pub async fn body(_: Rc<RefCell<OpState>>, _: u32) -> Result<Vec<u8>, JsErrorBox> { unreachable!() }
     pub fn headers(_: &mut OpState, _: u32) -> String { unreachable!() }
+    pub fn node_request(_: &mut OpState, _: u32) -> String { unreachable!() }
     pub fn spawn_workers(_: u32) -> Result<(), JsErrorBox> { unreachable!() }
     pub fn worker_id() -> u32 { 0 }
 }

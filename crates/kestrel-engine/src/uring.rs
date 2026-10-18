@@ -49,6 +49,7 @@ struct UConn {
     closing: bool,
     /// Hand the connection to hyper once the in-flight send completes.
     handover: bool,
+    stream_response: Option<Outgoing>,
     gen: u32,
 }
 
@@ -81,6 +82,22 @@ thread_local! {
 
 fn with_uring<R>(f: impl FnOnce(&mut Uring) -> R) -> Option<R> {
     URING.with(|u| u.borrow().as_ref().map(|r| f(&mut r.borrow_mut())))
+}
+
+pub fn close_server(rid: u32) {
+    with_uring(|u| {
+        for key in 0..u.conns.len() {
+            let Some(c) = u.conns[key].as_mut() else { continue };
+            if c.rid != rid { continue; }
+            c.close_after = true;
+            if c.recv_inflight && !c.waiting {
+                // Complete the pending recv before freeing its buffer.
+                unsafe { libc::shutdown(c.fd, libc::SHUT_RD); }
+            }
+            arm(u, key);
+        }
+        flush_sq(u);
+    });
 }
 
 struct RingFd(RawFd);
@@ -230,6 +247,7 @@ fn register_accepted((rid, stream, live): Accepted) {
             close_after: false,
             closing: false,
             handover: false,
+            stream_response: None,
             gen,
         });
         arm(u, key);
@@ -290,7 +308,7 @@ fn arm(u: &mut Uring, key: usize) {
         }
         return;
     }
-    if (c.closing || c.close_after) && drained && !c.recv_inflight {
+    if (c.closing || (c.close_after && !c.waiting)) && drained && !c.recv_inflight {
         u.conns[key] = None;
         u.free.push(key);
         return;
@@ -400,13 +418,13 @@ fn process_buffer(c: &mut UConn, key: usize) -> bool {
             Ok(httparse::Status::Complete(n)) => n,
             Ok(httparse::Status::Partial) => {
                 if c.rlen >= RBUF {
-                    write_response(&mut c.wbuf, &Outgoing { status: 431, headers: String::new(), body: Bytes::from_static(b"Request Header Fields Too Large") }, true);
+                    write_response(&mut c.wbuf, &Outgoing { status: 431, headers: String::new(), body: Bytes::from_static(b"Request Header Fields Too Large"), stream: None }, true);
                     c.close_after = true;
                 }
                 break;
             }
             Err(_) => {
-                write_response(&mut c.wbuf, &Outgoing { status: 400, headers: String::new(), body: Bytes::from_static(b"Bad Request") }, true);
+                write_response(&mut c.wbuf, &Outgoing { status: 400, headers: String::new(), body: Bytes::from_static(b"Bad Request"), stream: None }, true);
                 c.close_after = true;
                 break;
             }
@@ -442,8 +460,11 @@ fn process_buffer(c: &mut UConn, key: usize) -> bool {
         // Consume the request; keep any pipelined bytes at the front.
         c.rbuf.copy_within(parsed..c.rlen, 0);
         c.rlen -= parsed;
-        match httpimpl::dispatch_raw(c.rid, raw) {
+        let step = httpimpl::dispatch_raw(c.rid, raw);
+        close_after |= httpimpl::is_closing(c.rid);
+        match step {
             Step::Done(out) => {
+                if out.stream.is_some() { c.close_after = close_after; c.stream_response = Some(out); return handover_now(c, key); }
                 write_response(&mut c.wbuf, &out, close_after);
                 if close_after {
                     c.close_after = true;
@@ -481,14 +502,16 @@ fn do_handover(c: &mut UConn) {
     let stream = unsafe { std::net::TcpStream::from_raw_fd(dup) };
     let prefix = c.rbuf[..c.rlen].to_vec();
     c.rlen = 0;
-    httpimpl::hyper_takeover(c.rid, stream, prefix);
+    if let Some(out) = c.stream_response.take() {
+        httpimpl::streaming_takeover(c.rid, stream, prefix, Vec::new(), out, c.close_after, c.live.take());
+    } else { httpimpl::hyper_takeover(c.rid, stream, prefix, c.live.take()); }
 }
 
 fn spawn_completion(key: usize, gen: u32, rrx: oneshot::Receiver<Outgoing>) {
     let tx = with_uring(|u| u.done_tx.clone());
     let Some(tx) = tx else { return };
     tokio::spawn(async move {
-        let out = rrx.await.unwrap_or(Outgoing { status: 500, headers: String::new(), body: Bytes::from_static(b"Internal Server Error") });
+        let out = rrx.await.unwrap_or(Outgoing { status: 500, headers: String::new(), body: Bytes::from_static(b"Internal Server Error"), stream: None });
         let _ = tx.send((key, gen, out));
     });
 }
@@ -497,6 +520,11 @@ fn complete_async(key: usize, gen: u32, out: Outgoing) {
     let Some(mut c) = take(key, gen) else { return };
     c.waiting = false;
     let close = c.close_after;
+    if out.stream.is_some() {
+        c.stream_response = Some(out);
+        if handover_now(&mut c, key) { put_back(key, c); }
+        return;
+    }
     write_response(&mut c.wbuf, &out, close);
     if !close && !process_buffer(&mut c, key) {
         return;

@@ -2,7 +2,7 @@
 import { EventEmitter } from "ext:kestrel/node/events.js";
 import { Readable, Writable } from "ext:kestrel/node/stream.js";
 import { Buffer } from "ext:kestrel/node/buffer.js";
-import { nodeError } from "ext:kestrel/internal.js";
+import { ops, nodeError } from "ext:kestrel/internal.js";
 
 export const METHODS = ["ACL", "BIND", "CHECKOUT", "CONNECT", "COPY", "DELETE", "GET", "HEAD", "LINK", "LOCK", "M-SEARCH", "MERGE", "MKACTIVITY", "MKCALENDAR", "MKCOL", "MOVE", "NOTIFY", "OPTIONS", "PATCH", "POST", "PROPFIND", "PROPPATCH", "PURGE", "PUT", "QUERY", "REBIND", "REPORT", "SEARCH", "SOURCE", "SUBSCRIBE", "TRACE", "UNBIND", "UNLINK", "UNLOCK", "UNSUBSCRIBE"];
 export const STATUS_CODES = { 100: "Continue", 101: "Switching Protocols", 102: "Processing", 103: "Early Hints", 200: "OK", 201: "Created", 202: "Accepted", 203: "Non-Authoritative Information", 204: "No Content", 205: "Reset Content", 206: "Partial Content", 300: "Multiple Choices", 301: "Moved Permanently", 302: "Found", 303: "See Other", 304: "Not Modified", 307: "Temporary Redirect", 308: "Permanent Redirect", 400: "Bad Request", 401: "Unauthorized", 402: "Payment Required", 403: "Forbidden", 404: "Not Found", 405: "Method Not Allowed", 406: "Not Acceptable", 407: "Proxy Authentication Required", 408: "Request Timeout", 409: "Conflict", 410: "Gone", 411: "Length Required", 412: "Precondition Failed", 413: "Payload Too Large", 414: "URI Too Long", 415: "Unsupported Media Type", 416: "Range Not Satisfiable", 417: "Expectation Failed", 418: "I'm a Teapot", 422: "Unprocessable Entity", 425: "Too Early", 426: "Upgrade Required", 428: "Precondition Required", 429: "Too Many Requests", 431: "Request Header Fields Too Large", 451: "Unavailable For Legal Reasons", 500: "Internal Server Error", 501: "Not Implemented", 502: "Bad Gateway", 503: "Service Unavailable", 504: "Gateway Timeout", 505: "HTTP Version Not Supported" };
@@ -39,9 +39,11 @@ export class IncomingMessage extends Readable {
 
 export class OutgoingMessage extends Writable {
   constructor() {
-    super({ write: (c, e, cb) => { this._chunks.push(typeof c === "string" ? Buffer.from(c, e === "buffer" ? "utf8" : e) : c); cb(); }, final: (cb) => cb() });
+    super();
     this._headers = new Map(); this._chunks = []; this.headersSent = false; this.finished = false; this.sendDate = true; this.chunkedEncoding = false; this.useChunkedEncodingByDefault = true;
   }
+  _write(chunk, encoding, cb) { this._chunks.push(chunk); cb(); }
+  _final(cb) { cb(); }
   setHeader(k, v) { if (this.headersSent) throw nodeError("ERR_HTTP_HEADERS_SENT", "Cannot set headers after they are sent to the client"); this._headers.set(String(k).toLowerCase(), v); return this; }
   setHeaders(h) { for (const [k, v] of h instanceof Map || h instanceof Headers ? h : Object.entries(h)) this.setHeader(k, v); return this; }
   appendHeader(k, v) { const cur = this._headers.get(String(k).toLowerCase()); this.setHeader(k, cur === undefined ? v : [].concat(cur, v)); return this; }
@@ -58,17 +60,61 @@ export class OutgoingMessage extends Writable {
 }
 
 export class ServerResponse extends OutgoingMessage {
-  constructor(req, respond) {
+  constructor(req, respond, requestId) {
     super();
+    // Keep immutable UTF-8 strings until the native response writer. Streams
+    // and other encodings are normalized explicitly in write below.
+    this._writableState.decodeStrings = false;
     this.req = req; this.statusCode = 200; this.statusMessage = undefined; this._respond = respond;
+    this._requestId = requestId;
     this.once("finish", () => this._send());
   }
+  _write(chunk, encoding, cb) {
+    if (this._streamId === undefined) { this._chunks.push(chunk); cb(); return; }
+    (async () => {
+      for (let offset = 0; offset < chunk.length; offset += 65536)
+        await ops.op_http_stream_write(this._streamId, chunk.subarray(offset, offset + 65536));
+    })().then(() => cb(), cb);
+  }
+  _final(cb) { if (this._streamId !== undefined) ops.op_http_stream_end(this._streamId, false); cb(); }
+  _destroy(err, cb) { if (this._streamId !== undefined) ops.op_http_stream_end(this._streamId, true); cb(err); }
   writeHead(status, reason, headers) {
     if (typeof reason === "object" && reason !== null) { headers = reason; reason = undefined; }
     this.statusCode = status; if (reason) this.statusMessage = reason;
     if (headers) { if (Array.isArray(headers)) { for (let i = 0; i + 1 < headers.length; i += 2) this.setHeader(headers[i], headers[i + 1]); } else for (const k of Object.keys(headers)) this.setHeader(k, headers[k]); }
+    // compression/on-headers middleware uses _header to commit headers once.
+    this._header = `HTTP/1.1 ${status} ${this.statusMessage || STATUS_CODES[status] || "unknown"}\r\n`;
+    for (const [k, v] of this._headers) {
+      for (const value of Array.isArray(v) ? v : [v]) this._header += `${k}: ${value}\r\n`;
+    }
+    this._header += "\r\n";
     this.headersSent = true;
     return this;
+  }
+  _implicitHeader() { this.writeHead(this.statusCode); }
+  _beginStream() {
+    if (this._streamId !== undefined || this._requestId === undefined) return;
+    if (!this._header) this._implicitHeader();
+    const parts = [];
+    for (const [key, value] of this._headers) for (const item of Array.isArray(value) ? value : [value]) parts.push(key, String(item));
+    this._streamId = ops.op_http_stream_start(this._requestId, this.statusCode, parts.length ? parts.join("\0") : "\0");
+    ops.op_http_stream_closed(this._streamId).then(aborted => { if (aborted && !this.destroyed) this.destroy(); });
+    this._respond(this.statusCode, "", null, true);
+  }
+  flushHeaders() { if (!this._header) this._implicitHeader(); this._beginStream(); }
+  write(chunk, encoding, cb) {
+    if (!this._inEnd) this._beginStream();
+    if (typeof chunk === "string") {
+      const enc = typeof encoding === "function" || !encoding ? this._writableState.defaultEncoding : encoding;
+      // Count streamed Unicode in bytes. Validate other encodings before
+      // Writable mutates its queue, so a rejected write can be recovered from.
+      if (this._streamId !== undefined || (enc !== "utf8" && enc !== "utf-8")) chunk = Buffer.from(chunk, enc);
+    }
+    return super.write(chunk, encoding, cb);
+  }
+  end(chunk, encoding, cb) {
+    this._inEnd = true;
+    try { return super.end(chunk, encoding, cb); } finally { this._inEnd = false; }
   }
   writeContinue() {}
   writeEarlyHints() {}
@@ -76,13 +122,19 @@ export class ServerResponse extends OutgoingMessage {
   _send() {
     if (this.finished) return;
     this.finished = true; this.headersSent = true;
-    const body = Buffer.concat(this._chunks);
+    if (this._streamId !== undefined) return;
+    // end callbacks may reuse/mutate the caller's buffer before the promise is delivered.
+    const body = this._chunks.length === 1 && typeof this._chunks[0] === "string"
+      ? this._chunks[0]
+      : Buffer.concat(this._chunks.map(chunk => typeof chunk === "string" ? Buffer.from(chunk) : chunk));
     const parts = [];
     for (const [k, v] of this._headers) { if (Array.isArray(v)) for (const x of v) parts.push(k, String(x)); else parts.push(k, String(v)); }
     // Node sends no default content-type; "\0" tells the runtime "no headers at all".
     this._respond(this.statusCode, parts.length ? parts.join("\0") : "\0", body);
   }
 }
+
+const singleValueHeaders = new Set("age authorization content-length content-type etag expires from host if-modified-since if-unmodified-since last-modified location max-forwards proxy-authorization referer retry-after server user-agent".split(" "));
 
 export class Server extends EventEmitter {
   constructor(opts, handler) {
@@ -102,26 +154,50 @@ export class Server extends EventEmitter {
       const info = globalThis.Kestrel.serve({
         port, hostname: host || "0.0.0.0", workers: 1, silent: true, tls: this._tls,
         fetch(request) {
-          return new Promise((resolve) => {
+            let response, resolve;
             const id = request[Symbol.for("kestrel.reqId")];
+            const metadata = respondOps.op_kestrel_http_node_request(id).split("\0");
+            const method = metadata[0], target = metadata[1];
             const hdrs = {}; const raw = [];
-            for (const [k, v] of request.headers) { hdrs[k] = v; raw.push(k, v); }
-            const hasBody = request.method !== "GET" && request.method !== "HEAD";
-            // Node's req.url is the request target (path + query); Request.url is absolute.
-            const u = new URL(request.url);
-            const req = new IncomingMessage({ method: request.method, url: u.pathname + u.search, headers: hdrs, rawHeaders: raw, bodyFetch: hasBody ? () => respondOps.op_kestrel_http_body(id) : null });
-            const res = new ServerResponse(req, (status, headersFlat, body) => resolve(new globalThis.Response(body, { status, headers: { "x-kestrel-raw": "1" }, __raw: headersFlat })));
+            for (let i = 2; i + 1 < metadata.length; i += 2) {
+              const name = metadata[i], value = metadata[i + 1], key = name.toLowerCase();
+              raw.push(name, value);
+              if (key === "set-cookie") (hdrs[key] ??= []).push(value);
+              else if (!Object.hasOwn(hdrs, key)) hdrs[key] = value;
+              else if (key === "cookie") hdrs[key] += "; " + value;
+              else if (!singleValueHeaders.has(key)) hdrs[key] += ", " + value;
+            }
+            const hasBody = method !== "GET" && method !== "HEAD";
+            const req = new IncomingMessage({ method, url: target, headers: hdrs, rawHeaders: raw, bodyFetch: hasBody ? () => respondOps.op_kestrel_http_body(id) : null });
+            const res = new ServerResponse(req, (status, headersFlat, body, streamed) => {
+              response = new globalThis.Response(body, { status, headers: { "x-kestrel-raw": "1" }, __raw: headersFlat });
+              response._alreadySent = !!streamed;
+              if (resolve) resolve(response);
+            }, id);
             self.emit("request", req, res);
-          });
+            // Body readers may have parked the request while waiting for hyper
+            // to attach its body. Keep that handoff on the pending-request route.
+            if (response) return hasBody || response._alreadySent ? Promise.resolve(response) : response;
+            return new Promise(done => { resolve = done; });
         },
       });
-      this._port = info.port; this._host = info.hostname; this.listening = true;
+      this._server = info; this._port = info.port; this._host = info.hostname; this.listening = true;
       queueMicrotask(() => this.emit("listening"));
     } catch (e) { queueMicrotask(() => this.emit("error", e)); }
     return this;
   }
   address() { return this.listening ? { address: this._host, family: "IPv4", port: this._port } : null; }
-  close(cb) { this.listening = false; if (cb) queueMicrotask(() => cb()); this.emit("close"); return this; }
+  close(cb) {
+    if (!this.listening) {
+      const err = nodeError("ERR_SERVER_NOT_RUNNING", "Server is not running.");
+      if (cb) queueMicrotask(() => cb(err));
+      return this;
+    }
+    this.listening = false;
+    if (cb) this.once("close", cb);
+    this._server.stop().then(() => this.emit("close"), e => this.emit("error", e));
+    return this;
+  }
   closeAllConnections() {} closeIdleConnections() {}
   setTimeout(ms, cb) { this.timeout = ms; if (cb) this.on("timeout", cb); return this; }
   ref() { return this; } unref() { return this; }
@@ -155,6 +231,8 @@ export class ClientRequest extends OutgoingMessage {
   _send() {
     const headers = [];
     for (const [k, v] of this._headers) { if (Array.isArray(v)) for (const x of v) headers.push([k, String(x)]); else headers.push([k, String(v)]); }
+    if (this._streamId !== undefined) return;
+    // end callbacks may reuse/mutate the caller's buffer before the promise is delivered.
     const body = Buffer.concat(this._chunks);
     const hasBody = body.length > 0 || !["GET", "HEAD"].includes(this.method);
     Deno.core.ops.op_kestrel_fetch(this._url, this.method, headers, body, hasBody, false).then((r) => {

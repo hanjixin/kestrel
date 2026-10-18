@@ -22,6 +22,7 @@ use serde::Serialize;
 type SendStream = h2::SendStream<Bytes>;
 
 struct Stream {
+    wakers: [Option<std::task::Waker>; 4],
     cid: u32,
     recv: Option<h2::RecvStream>,
     respond: Option<h2::server::SendResponse<Bytes>>,
@@ -30,6 +31,14 @@ struct Stream {
     pushed_fut: Option<h2::client::PushedResponseFuture>,
     pushes: Option<h2::client::PushPromises>,
     send: Option<SendStream>,
+}
+
+impl Drop for Stream {
+    fn drop(&mut self) {
+        // The async ops poll handles stored here, not handles they own. Removing
+        // a stream must wake those ops so they observe its removal and finish.
+        for waker in self.wakers.iter_mut().filter_map(Option::take) { waker.wake(); }
+    }
 }
 
 struct Conn {
@@ -58,7 +67,8 @@ pub struct Accepted {
 struct Listener {
     rx: tokio::sync::mpsc::UnboundedReceiver<Accepted>,
     port: u16,
-    task: tokio::task::AbortHandle,
+    task: tokio::task::JoinHandle<()>,
+    accept_waker: Option<std::task::Waker>,
 }
 
 #[derive(Default)]
@@ -170,11 +180,10 @@ pub fn op_h2_listen(#[string] host: &str, port: u16, tls: bool) -> Result<(u32, 
                 }
             });
         }
-    })
-    .abort_handle();
+    });
     let rid = with(|h| {
         let rid = next_id(h);
-        h.listeners.insert(rid, Listener { rx, port: bound, task });
+        h.listeners.insert(rid, Listener { rx, port: bound, task, accept_waker: None });
         rid
     });
     Ok((rid, bound))
@@ -199,7 +208,7 @@ where
         let has_body = !body.is_end_stream();
         let sid = with(|h| {
             let sid = next_id(h);
-            h.streams.insert(sid, Stream { cid, recv: Some(body), respond: Some(respond), pushed: None, resp_fut: None, pushed_fut: None, pushes: None, send: None });
+            h.streams.insert(sid, Stream { wakers: Default::default(), cid, recv: Some(body), respond: Some(respond), pushed: None, resp_fut: None, pushed_fut: None, pushes: None, send: None });
             sid
         });
         if h2_log() { eprintln!("[h2] accepted cid={cid} sid={sid} {:?} body={has_body}", parts.uri); }
@@ -217,16 +226,20 @@ where
 #[op2]
 #[serde]
 pub async fn op_h2_accept(rid: u32) -> Option<Accepted> {
-    std::future::poll_fn(|cx| with(|h| match h.listeners.get_mut(&rid) { Some(l) => l.rx.poll_recv(cx), None => Poll::Ready(None) })).await
+    std::future::poll_fn(|cx| with(|h| match h.listeners.get_mut(&rid) {
+        Some(l) => { l.accept_waker = Some(cx.waker().clone()); l.rx.poll_recv(cx) },
+        None => Poll::Ready(None),
+    })).await
 }
 
-#[op2(fast)]
-pub fn op_h2_close_listener(rid: u32) {
-    with(|h| {
-        if let Some(l) = h.listeners.remove(&rid) {
-            l.task.abort();
-        }
-    });
+#[op2]
+pub async fn op_h2_close_listener(rid: u32) {
+    let listener = with(|h| h.listeners.remove(&rid));
+    if let Some(l) = listener {
+        if let Some(waker) = l.accept_waker { waker.wake(); }
+        l.task.abort();
+        let _ = l.task.await;
+    }
 }
 
 #[op2(fast)]
@@ -243,6 +256,7 @@ pub async fn op_h2_read(sid: u32) -> Result<Option<Vec<u8>>, JsErrorBox> {
     let r = std::future::poll_fn(|cx| {
         with(|h| {
             let Some(s) = h.streams.get_mut(&sid) else { return Poll::Ready(None) };
+            s.wakers[0] = Some(cx.waker().clone());
             let Some(recv) = s.recv.as_mut() else { return Poll::Ready(None) };
             match recv.poll_data(cx) {
                 Poll::Ready(Some(Ok(b))) => {
@@ -295,6 +309,7 @@ pub async fn op_h2_write(sid: u32, #[buffer(copy)] data: Vec<u8>) -> Result<(), 
         let cap = std::future::poll_fn(|cx| {
             with(|h| {
                 let Some(s) = h.streams.get_mut(&sid) else { return Poll::Ready(Err(stream_err())) };
+                s.wakers[1] = Some(cx.waker().clone());
                 let Some(send) = s.send.as_mut() else { return Poll::Ready(Err(stream_err())) };
                 send.reserve_capacity(want);
                 match send.poll_capacity(cx) {
@@ -367,7 +382,7 @@ pub fn op_h2_push(sid: u32, #[string] method: &str, #[string] path: &str, #[stri
         let r = parent.respond.as_mut().ok_or_else(|| JsErrorBox::new("Error", "ERR_HTTP2_PUSH_DISABLED: pushStream must be called before the response is sent"))?;
         let pushed = r.push_request(req).map_err(h2_err)?;
         let psid = next_id(h);
-        h.streams.insert(psid, Stream { cid, recv: None, respond: None, pushed: Some(pushed), resp_fut: None, pushed_fut: None, pushes: None, send: None });
+        h.streams.insert(psid, Stream { wakers: Default::default(), cid, recv: None, respond: None, pushed: Some(pushed), resp_fut: None, pushed_fut: None, pushes: None, send: None });
         Ok(psid)
     })
 }
@@ -455,7 +470,7 @@ pub async fn op_h2_request(cid: u32, #[string] method: String, #[string] uri: St
     let pushes = fut.push_promises();
     Ok(with(|h| {
         let sid = next_id(h);
-        h.streams.insert(sid, Stream { cid, recv: None, respond: None, pushed: None, resp_fut: Some(fut), pushed_fut: None, pushes: Some(pushes), send: Some(send) });
+        h.streams.insert(sid, Stream { wakers: Default::default(), cid, recv: None, respond: None, pushed: None, resp_fut: Some(fut), pushed_fut: None, pushes: Some(pushes), send: Some(send) });
         sid
     }))
 }
@@ -473,6 +488,7 @@ pub async fn op_h2_response(sid: u32) -> Result<Head, JsErrorBox> {
     let r = std::future::poll_fn(|cx| {
         with(|h| {
             let Some(s) = h.streams.get_mut(&sid) else { return Poll::Ready(Err(stream_err())) };
+            s.wakers[2] = Some(cx.waker().clone());
             let polled = if let Some(f) = s.resp_fut.as_mut() {
                 Pin::new(f).poll(cx)
             } else if let Some(f) = s.pushed_fut.as_mut() {
@@ -511,6 +527,7 @@ pub async fn op_h2_push_promise(sid: u32) -> Result<Option<Promise>, JsErrorBox>
     std::future::poll_fn(|cx| {
         with(|h| {
             let Some(s) = h.streams.get_mut(&sid) else { return Poll::Ready(Ok(None)) };
+            s.wakers[3] = Some(cx.waker().clone());
             let Some(p) = s.pushes.as_mut() else { return Poll::Ready(Ok(None)) };
             match p.poll_push_promise(cx) {
                 Poll::Pending => Poll::Pending,
@@ -522,7 +539,7 @@ pub async fn op_h2_push_promise(sid: u32) -> Result<Option<Promise>, JsErrorBox>
                     let (parts, _) = req.into_parts();
                     let headers = request_headers(&parts, false);
                     let psid = next_id(h);
-                    h.streams.insert(psid, Stream { cid, recv: None, respond: None, pushed: None, resp_fut: None, pushed_fut: Some(fut), pushes: None, send: None });
+                    h.streams.insert(psid, Stream { wakers: Default::default(), cid, recv: None, respond: None, pushed: None, resp_fut: None, pushed_fut: Some(fut), pushes: None, send: None });
                     Poll::Ready(Ok(Some(Promise { psid, headers })))
                 }
             }

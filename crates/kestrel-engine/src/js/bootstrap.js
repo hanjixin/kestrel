@@ -267,6 +267,7 @@ function serve(options) {
   const respondBytes = ops.op_kestrel_http_respond_bytes;
   const errorResp = new Response("Internal Server Error", { status: 500 });
   const send = (id, r) => {
+    if (r?._alreadySent) return;
     if (!(r instanceof Response)) r = errorResp;
     const hdrs = r._raw !== undefined ? r._raw : r.hasHeaders ? (r.headers.has("content-type") ? r.headers._flat() : r.headers._flat() + (r.headers._size() ? "\0" : "") + TEXT_PLAIN) : "";
     const b = r[kBody];
@@ -301,6 +302,7 @@ function serve(options) {
   if (workerId === 0 && options.silent !== true) {
     console.log(`Kestrel listening on ${options.tls ? "https" : "http"}://${hostname}:${boundPort} (${workers} worker${workers > 1 ? "s" : ""})`);
   }
-  return { port: boundPort, hostname, workers };
+  let stopping;
+  return { port: boundPort, hostname, workers, stop() { return stopping ??= ops.op_kestrel_http_close(rid); } };
 }
 globalThis.Kestrel = Object.freeze({ serve, get workerId() { return ops.op_kestrel_worker_id(); }, version: "0.0.1" });

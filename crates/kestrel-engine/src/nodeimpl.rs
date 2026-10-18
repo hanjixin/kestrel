@@ -135,10 +135,15 @@ pub fn stat_from_metadata(md: &std::fs::Metadata) -> StatInfo {
 #[op2]
 #[serde]
 pub fn op_k_fs_stat(#[string] path: &str, follow: bool) -> Result<StatInfo, JsErrorBox> {
+    fs_stat_impl(path, follow)
+}
+
+fn fs_stat_impl(path: &str, follow: bool) -> Result<StatInfo, JsErrorBox> {
     let md = if follow { std::fs::metadata(path) } else { std::fs::symlink_metadata(path) };
     let md = md.map_err(|e| io_err(&e, if follow { "stat" } else { "lstat" }, path))?;
     Ok(stat_from_metadata(&md))
 }
+
 
 #[op2(fast)]
 pub fn op_k_fs_exists(#[string] path: &str) -> bool {
@@ -149,6 +154,10 @@ pub fn op_k_fs_exists(#[string] path: &str) -> bool {
 #[op2]
 #[serde]
 pub fn op_k_fs_readdir(#[string] path: &str) -> Result<Vec<(String, u8)>, JsErrorBox> {
+    fs_readdir_impl(path)
+}
+
+fn fs_readdir_impl(path: &str) -> Result<Vec<(String, u8)>, JsErrorBox> {
     let rd = std::fs::read_dir(path).map_err(|e| io_err(&e, "scandir", path))?;
     let mut out = Vec::new();
     for e in rd {
@@ -166,8 +175,13 @@ pub fn op_k_fs_readdir(#[string] path: &str) -> Result<Vec<(String, u8)>, JsErro
     Ok(out)
 }
 
+
 #[op2(fast)]
 pub fn op_k_fs_mkdir(#[string] path: &str, recursive: bool, mode: u32) -> Result<(), JsErrorBox> {
+    fs_mkdir_impl(path, recursive, mode)
+}
+
+fn fs_mkdir_impl(path: &str, recursive: bool, mode: u32) -> Result<(), JsErrorBox> {
     let mut b = std::fs::DirBuilder::new();
     b.recursive(recursive);
     #[cfg(unix)]
@@ -179,8 +193,13 @@ pub fn op_k_fs_mkdir(#[string] path: &str, recursive: bool, mode: u32) -> Result
     b.create(path).map_err(|e| io_err(&e, "mkdir", path))
 }
 
+
 #[op2(fast)]
 pub fn op_k_fs_remove(#[string] path: &str, recursive: bool, force: bool) -> Result<(), JsErrorBox> {
+    fs_remove_impl(path, recursive, force)
+}
+
+fn fs_remove_impl(path: &str, recursive: bool, force: bool) -> Result<(), JsErrorBox> {
     let p = Path::new(path);
     let md = match std::fs::symlink_metadata(p) {
         Ok(m) => m,
@@ -199,34 +218,59 @@ pub fn op_k_fs_remove(#[string] path: &str, recursive: bool, force: bool) -> Res
     r.map_err(|e| io_err(&e, "rm", path))
 }
 
+
 #[op2(fast)]
 pub fn op_k_fs_rename(#[string] from: &str, #[string] to: &str) -> Result<(), JsErrorBox> {
+    fs_rename_impl(from, to)
+}
+
+fn fs_rename_impl(from: &str, to: &str) -> Result<(), JsErrorBox> {
     std::fs::rename(from, to).map_err(|e| io_err(&e, "rename", from))
 }
 
+
 #[op2(fast)]
 pub fn op_k_fs_copy(#[string] from: &str, #[string] to: &str) -> Result<(), JsErrorBox> {
+    fs_copy_impl(from, to)
+}
+
+fn fs_copy_impl(from: &str, to: &str) -> Result<(), JsErrorBox> {
     std::fs::copy(from, to).map(|_| ()).map_err(|e| io_err(&e, "copyfile", from))
 }
+
 
 #[op2]
 #[string]
 pub fn op_k_fs_realpath(#[string] path: &str) -> Result<String, JsErrorBox> {
+    fs_realpath_impl(path)
+}
+
+fn fs_realpath_impl(path: &str) -> Result<String, JsErrorBox> {
     std::fs::canonicalize(path)
         .map(|p| p.to_string_lossy().into_owned())
         .map_err(|e| io_err(&e, "realpath", path))
 }
 
+
 #[op2]
 #[string]
 pub fn op_k_fs_readlink(#[string] path: &str) -> Result<String, JsErrorBox> {
+    fs_readlink_impl(path)
+}
+
+fn fs_readlink_impl(path: &str) -> Result<String, JsErrorBox> {
     std::fs::read_link(path)
         .map(|p| p.to_string_lossy().into_owned())
         .map_err(|e| io_err(&e, "readlink", path))
 }
 
+
 #[op2(fast)]
 pub fn op_k_fs_chmod(#[string] path: &str, mode: u32) -> Result<(), JsErrorBox> {
+    fs_chmod_impl(path, mode)
+}
+
+fn fs_chmod_impl(path: &str, mode: u32) -> Result<(), JsErrorBox> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -239,8 +283,13 @@ pub fn op_k_fs_chmod(#[string] path: &str, mode: u32) -> Result<(), JsErrorBox> 
     }
 }
 
+
 #[op2(fast)]
 pub fn op_k_fs_symlink(#[string] target: &str, #[string] path: &str) -> Result<(), JsErrorBox> {
+    fs_symlink_impl(target, path)
+}
+
+fn fs_symlink_impl(target: &str, path: &str) -> Result<(), JsErrorBox> {
     #[cfg(unix)]
     {
         std::os::unix::fs::symlink(target, path).map_err(|e| io_err(&e, "symlink", path))
@@ -252,17 +301,27 @@ pub fn op_k_fs_symlink(#[string] target: &str, #[string] path: &str) -> Result<(
     }
 }
 
+
 #[op2(fast)]
 pub fn op_k_fs_utimes(#[string] path: &str, atime_ms: f64, mtime_ms: f64) -> Result<(), JsErrorBox> {
+    fs_utimes_impl(path, atime_ms, mtime_ms)
+}
+
+fn fs_utimes_impl(path: &str, atime_ms: f64, mtime_ms: f64) -> Result<(), JsErrorBox> {
     let to = |ms: f64| std::time::UNIX_EPOCH + std::time::Duration::from_secs_f64((ms / 1000.0).max(0.0));
     let f = std::fs::File::options().write(true).open(path).map_err(|e| io_err(&e, "utime", path))?;
     f.set_times(std::fs::FileTimes::new().set_accessed(to(atime_ms)).set_modified(to(mtime_ms)))
         .map_err(|e| io_err(&e, "utime", path))
 }
 
+
 #[op2]
 #[string]
 pub fn op_k_fs_mkdtemp(#[string] prefix: &str) -> Result<String, JsErrorBox> {
+    fs_mkdtemp_impl(prefix)
+}
+
+fn fs_mkdtemp_impl(prefix: &str) -> Result<String, JsErrorBox> {
     for _ in 0..100 {
         let suffix: String = (0..6).map(|_| {
             let b = rand::random::<u8>() % 36;
@@ -277,6 +336,7 @@ pub fn op_k_fs_mkdtemp(#[string] prefix: &str) -> Result<String, JsErrorBox> {
     }
     Err(JsErrorBox::generic("mkdtemp: too many attempts"))
 }
+
 
 // ---------- encodings ----------
 
@@ -703,4 +763,96 @@ pub fn op_k_esm_to_cjs(#[string] path: &str, #[string] src: &str) -> Result<Stri
 #[op2(fast)]
 pub fn op_k_is_builtin(#[string] spec: &str) -> bool {
     super::resolve::builtin_name(spec).is_some()
+}
+
+// File contents are processed in a single pool job; returning Vec transfers the
+// result allocation into V8 instead of copying each byte through serde.
+#[op2]
+#[buffer]
+pub async fn op_k_fs_read_async(#[string] path: String) -> Result<Vec<u8>, JsErrorBox> {
+    tokio::task::spawn_blocking(move || std::fs::read(&path).map_err(|e| io_err(&e, "open", &path))).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+#[op2]
+pub async fn op_k_fs_write_async(#[string] path: String, #[buffer(copy)] bytes: Vec<u8>, #[string] flags: String, mode: u32) -> Result<(), JsErrorBox> {
+    tokio::task::spawn_blocking(move || {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).mode(mode);
+        match flags.as_str() {
+            "w" | "w+" => { options.create(true).truncate(true); }
+            "wx" | "wx+" => { options.create_new(true); }
+            "a" | "a+" => { options.create(true).append(true); }
+            "ax" | "ax+" => { options.create_new(true).append(true); }
+            "r+" => {}
+            _ => return Err(JsErrorBox::type_error("invalid file flag")),
+        }
+        let mut file = options.open(&path).map_err(|e| io_err(&e, "open", &path))?;
+        file.write_all(&bytes).map_err(|e| io_err(&e, "write", &path))
+    }).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+#[serde]
+pub async fn op_k_fs_stat_async(#[string] path: String, follow: bool) -> Result<StatInfo, JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_stat_impl(&path, follow)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+#[serde]
+pub async fn op_k_fs_readdir_async(#[string] path: String) -> Result<Vec<(String, u8)>, JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_readdir_impl(&path)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+pub async fn op_k_fs_mkdir_async(#[string] path: String, recursive: bool, mode: u32) -> Result<(), JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_mkdir_impl(&path, recursive, mode)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+pub async fn op_k_fs_remove_async(#[string] path: String, recursive: bool, force: bool) -> Result<(), JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_remove_impl(&path, recursive, force)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+pub async fn op_k_fs_rename_async(#[string] from: String, #[string] to: String) -> Result<(), JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_rename_impl(&from, &to)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+pub async fn op_k_fs_copy_async(#[string] from: String, #[string] to: String) -> Result<(), JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_copy_impl(&from, &to)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+#[string]
+pub async fn op_k_fs_realpath_async(#[string] path: String) -> Result<String, JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_realpath_impl(&path)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+#[string]
+pub async fn op_k_fs_readlink_async(#[string] path: String) -> Result<String, JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_readlink_impl(&path)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+pub async fn op_k_fs_chmod_async(#[string] path: String, mode: u32) -> Result<(), JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_chmod_impl(&path, mode)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+pub async fn op_k_fs_symlink_async(#[string] target: String, #[string] path: String) -> Result<(), JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_symlink_impl(&target, &path)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+pub async fn op_k_fs_utimes_async(#[string] path: String, atime_ms: f64, mtime_ms: f64) -> Result<(), JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_utimes_impl(&path, atime_ms, mtime_ms)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
+}
+
+#[op2]
+#[string]
+pub async fn op_k_fs_mkdtemp_async(#[string] prefix: String) -> Result<String, JsErrorBox> {
+    tokio::task::spawn_blocking(move || fs_mkdtemp_impl(&prefix)).await.map_err(|e| JsErrorBox::generic(e.to_string()))?
 }

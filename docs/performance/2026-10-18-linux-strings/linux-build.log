@@ -1,0 +1,123 @@
+    Blocking waiting for file lock on build directory
+warning: use of deprecated constant `libc::INT_MAX`: Use `c_int::MAX` instead.
+  --> crates/kestrel-napi/js_native_api.rs:10:11
+   |
+10 | use libc::INT_MAX;
+   |           ^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated constant `libc::INT_MAX`: Use `c_int::MAX` instead.
+    --> crates/kestrel-napi/js_native_api.rs:1269:47
+     |
+1269 |     (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+     |                                               ^^^^^^^
+
+warning: use of deprecated constant `libc::INT_MAX`: Use `c_int::MAX` instead.
+    --> crates/kestrel-napi/js_native_api.rs:1316:47
+     |
+1316 |     (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+     |                                               ^^^^^^^
+
+warning: use of deprecated constant `libc::INT_MAX`: Use `c_int::MAX` instead.
+    --> crates/kestrel-napi/js_native_api.rs:1363:47
+     |
+1363 |     (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+     |                                               ^^^^^^^
+
+warning: use of deprecated constant `libc::INT_MAX`: Use `c_int::MAX` instead.
+    --> crates/kestrel-napi/js_native_api.rs:1853:47
+     |
+1853 |     (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+     |                                               ^^^^^^^
+
+warning: use of deprecated constant `libc::INT_MAX`: Use `c_int::MAX` instead.
+    --> crates/kestrel-napi/js_native_api.rs:1904:47
+     |
+1904 |     (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+     |                                               ^^^^^^^
+
+warning: use of deprecated constant `libc::INT_MAX`: Use `c_int::MAX` instead.
+    --> crates/kestrel-napi/js_native_api.rs:1951:47
+     |
+1951 |     (length == NAPI_AUTO_LENGTH) || length <= INT_MAX as _,
+     |                                               ^^^^^^^
+
+warning: use of deprecated constant `libc::INT_MAX`: Use `c_int::MAX` instead.
+    --> crates/kestrel-napi/js_native_api.rs:2102:19
+     |
+2102 |   if word_count > INT_MAX as _ {
+     |                   ^^^^^^^
+
+warning: use of deprecated constant `libc::INT_MAX`: Use `c_int::MAX` instead.
+ --> crates/kestrel-napi/util.rs:2:11
+  |
+2 | use libc::INT_MAX;
+  |           ^^^^^^^
+
+warning: use of deprecated constant `libc::INT_MAX`: Use `c_int::MAX` instead.
+   --> crates/kestrel-napi/util.rs:118:41
+    |
+118 |     (len == NAPI_AUTO_LENGTH) || len <= INT_MAX as _,
+    |                                         ^^^^^^^
+
+warning: `kestrel-napi` (lib) generated 10 warnings
+warning: function `builtin_url` is never used
+  --> crates/kestrel-engine/src/resolve.rs:22:8
+   |
+22 | pub fn builtin_url(name: &str) -> String {
+   |        ^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `cjs_named_exports` is never used
+   --> crates/kestrel-engine/src/resolve.rs:258:8
+    |
+258 | pub fn cjs_named_exports(src: &str) -> Vec<String> {
+    |        ^^^^^^^^^^^^^^^^^
+
+warning: function `needs_transpile` is never used
+  --> crates/kestrel-engine/src/transpile.rs:14:8
+   |
+14 | pub fn needs_transpile(path: &Path) -> bool {
+   |        ^^^^^^^^^^^^^^^
+
+warning: `kestrel-engine` (build script) generated 3 warnings
+warning: `kestrel-napi` (lib) generated 10 warnings (10 duplicates)
+   Compiling kestrel-engine v0.0.1 (/src/crates/kestrel-engine)
+warning: unused import: `RawReq`
+  --> crates/kestrel-engine/src/uring.rs:23:39
+   |
+23 | use crate::httpimpl::{self, Outgoing, RawReq, Step};
+   |                                       ^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated associated function `tokio::io::unix::AsyncFd::<T>::with_interest`: unsound due to lack of I/O safety; use `AsyncFd::register_with_interest` instead (see https://github.com/tokio-rs/tokio/pull/8587)
+   --> crates/kestrel-engine/src/fastpath.rs:206:47
+    |
+206 |     let afd = match tokio::io::unix::AsyncFd::with_interest(PollFd(poller.as_raw_fd()), tokio::io::Interest::READABLE) {
+    |                                               ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated associated function `tokio::io::unix::AsyncFd::<T>::with_interest`: unsound due to lack of I/O safety; use `AsyncFd::register_with_interest` instead (see https://github.com/tokio-rs/tokio/pull/8587)
+   --> crates/kestrel-engine/src/uring.rs:126:47
+    |
+126 |     let afd = match tokio::io::unix::AsyncFd::with_interest(RingFd(ring.as_raw_fd()), tokio::io::Interest::READABLE) {
+    |                                               ^^^^^^^^^^^^^
+
+warning: field `main_polls` is never read
+   --> crates/kestrel-engine/src/httpimpl.rs:448:5
+    |
+444 | pub struct Stats {
+    |            ----- field in this struct
+...
+448 |     main_polls: u64,
+    |     ^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `kestrel-engine` (lib) generated 4 warnings (run `cargo fix --lib -p kestrel-engine` to apply 1 suggestion)
+   Compiling kestrel-cli v0.0.1 (/src/crates/kestrel-cli)
+    Finished `release` profile [optimized] target(s) in 3m 16s

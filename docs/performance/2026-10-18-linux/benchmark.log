@@ -1,0 +1,92 @@
+{"workload": "native-http", "runtime": "kestrel", "round": 1, "rps": 86203.72, "rss_kib": 49560}
+{"workload": "native-http", "runtime": "bun", "round": 1, "rps": 72181.95, "rss_kib": 33432}
+{"workload": "native-http", "runtime": "bun", "round": 2, "rps": 71484.79, "rss_kib": 33244}
+{"workload": "native-http", "runtime": "kestrel", "round": 2, "rps": 74404.64, "rss_kib": 46652}
+{"workload": "native-http", "runtime": "kestrel", "round": 3, "rps": 87141.64, "rss_kib": 46848}
+{"workload": "native-http", "runtime": "bun", "round": 3, "rps": 77332.91, "rss_kib": 33400}
+{"workload": "native-http", "runtime": "bun", "round": 4, "rps": 72428.7, "rss_kib": 33480}
+{"workload": "native-http", "runtime": "kestrel", "round": 4, "rps": 74738.76, "rss_kib": 47792}
+{"workload": "native-http", "runtime": "kestrel", "round": 5, "rps": 75790.12, "rss_kib": 47732}
+{"workload": "native-http", "runtime": "bun", "round": 5, "rps": 71876.52, "rss_kib": 33192}
+{"workload": "native-http", "runtime": "bun", "round": 6, "rps": 91993.9, "rss_kib": 32888}
+{"workload": "native-http", "runtime": "kestrel", "round": 6, "rps": 73020.93, "rss_kib": 49788}
+{"workload": "node-http", "runtime": "kestrel", "round": 1, "rps": 57790.34, "rss_kib": 57268}
+{"workload": "node-http", "runtime": "bun", "round": 1, "rps": 55085.11, "rss_kib": 59576}
+{"workload": "node-http", "runtime": "node", "round": 1, "rps": 34630.38, "rss_kib": 79384}
+{"workload": "node-http", "runtime": "bun", "round": 2, "rps": 54611.85, "rss_kib": 59212}
+{"workload": "node-http", "runtime": "node", "round": 2, "rps": 37826.57, "rss_kib": 77652}
+{"workload": "node-http", "runtime": "kestrel", "round": 2, "rps": 53664.49, "rss_kib": 56700}
+{"workload": "node-http", "runtime": "node", "round": 3, "rps": 36890.52, "rss_kib": 79080}
+{"workload": "node-http", "runtime": "kestrel", "round": 3, "rps": 56452.57, "rss_kib": 56132}
+{"workload": "node-http", "runtime": "bun", "round": 3, "rps": 58277.39, "rss_kib": 59124}
+{"workload": "node-http", "runtime": "node", "round": 4, "rps": 37495.99, "rss_kib": 76848}
+{"workload": "node-http", "runtime": "bun", "round": 4, "rps": 64181.43, "rss_kib": 60088}
+{"workload": "node-http", "runtime": "kestrel", "round": 4, "rps": 59431.65, "rss_kib": 58988}
+{"workload": "node-http", "runtime": "bun", "round": 5, "rps": 58238.81, "rss_kib": 60124}
+{"workload": "node-http", "runtime": "kestrel", "round": 5, "rps": 56803.15, "rss_kib": 55788}
+{"workload": "node-http", "runtime": "node", "round": 5, "rps": 39234.73, "rss_kib": 78824}
+{"workload": "node-http", "runtime": "kestrel", "round": 6, "rps": 52646.24, "rss_kib": 56728}
+{"workload": "node-http", "runtime": "node", "round": 6, "rps": 39946.49, "rss_kib": 78548}
+{"workload": "node-http", "runtime": "bun", "round": 6, "rps": 63369.13, "rss_kib": 60580}
+{
+  "native-http": {
+    "kestrel": {
+      "rps": 75264.44,
+      "rss_mib": 46.642578125
+    },
+    "bun": {
+      "rps": 72305.325,
+      "rss_mib": 32.541015625
+    }
+  },
+  "node-http": {
+    "kestrel": {
+      "rps": 56627.86,
+      "rss_mib": 55.384765625
+    },
+    "bun": {
+      "rps": 58258.1,
+      "rss_mib": 58.4296875
+    },
+    "node": {
+      "rps": 37661.28,
+      "rss_mib": 76.841796875
+    }
+  }
+}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "kestrel", "round": 1, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":19}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "bun", "round": 1, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":92}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "node", "round": 1, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":39}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "bun", "round": 2, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":80}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "node", "round": 2, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":40}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "kestrel", "round": 2, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":21}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "node", "round": 3, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":38}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "kestrel", "round": 3, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":21}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "bun", "round": 3, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":90}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "node", "round": 4, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":38}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "bun", "round": 4, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":63}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "kestrel", "round": 4, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":16}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "bun", "round": 5, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":92}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "kestrel", "round": 5, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":17}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "node", "round": 5, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":37}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "kestrel", "round": 6, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":16}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "node", "round": 6, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":38}\n", "stderr": ""}
+{"fixture": "bench/worker_transfer.mjs", "runtime": "bun", "round": 6, "exit": 0, "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":102}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "kestrel", "round": 1, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":162,\"ticks\":80}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "bun", "round": 1, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":269,\"ticks\":246}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "node", "round": 1, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":444,\"ticks\":444}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "bun", "round": 2, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":317,\"ticks\":291}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "node", "round": 2, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":724,\"ticks\":724}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "kestrel", "round": 2, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":163,\"ticks\":80}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "node", "round": 3, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":419,\"ticks\":419}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "kestrel", "round": 3, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":158,\"ticks\":78}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "bun", "round": 3, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":293,\"ticks\":268}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "node", "round": 4, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":685,\"ticks\":682}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "bun", "round": 4, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":314,\"ticks\":287}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "kestrel", "round": 4, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":158,\"ticks\":77}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "bun", "round": 5, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":270,\"ticks\":249}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "kestrel", "round": 5, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":156,\"ticks\":80}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "node", "round": 5, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":410,\"ticks\":411}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "kestrel", "round": 6, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":156,\"ticks\":79}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "node", "round": 6, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":711,\"ticks\":712}\n", "stderr": ""}
+{"fixture": "bench/fs_read.mjs", "runtime": "bun", "round": 6, "exit": 0, "stdout": "{\"bytes\":536870912,\"milliseconds\":301,\"ticks\":276}\n", "stderr": ""}

@@ -1,0 +1,162 @@
+[
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":26}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 1,
+    "exit": 1,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":26}\n",
+    "stderr": "4 |   const worker = new Worker(new URL(import.meta.url));\n5 |   let n = 0;\n6 |   const start = performance.now();\n7 |   worker.on('message', buffer => {\n8 |     if (!(buffer instanceof ArrayBuffer) || buffer.byteLength !== size)\n9 |       throw new Error('Worker did not preserve the transferred payload');\n                                                                           ^\nerror: Worker did not preserve the transferred payload\n      at <anonymous> (/workspace/kestrel/bench/worker_transfer.mjs:9:72)\n      at emit (node:events:95:22)\n      at #onMessage (node:worker_threads:220:14)\n\nBun v1.3.11 (macOS arm64)\n"
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 2,
+    "exit": 1,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":24}\n",
+    "stderr": "4 |   const worker = new Worker(new URL(import.meta.url));\n5 |   let n = 0;\n6 |   const start = performance.now();\n7 |   worker.on('message', buffer => {\n8 |     if (!(buffer instanceof ArrayBuffer) || buffer.byteLength !== size)\n9 |       throw new Error('Worker did not preserve the transferred payload');\n                                                                           ^\nerror: Worker did not preserve the transferred payload\n      at <anonymous> (/workspace/kestrel/bench/worker_transfer.mjs:9:72)\n      at emit (node:events:95:22)\n      at #onMessage (node:worker_threads:220:14)\n\nBun v1.3.11 (macOS arm64)\n"
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":11}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":11}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 3,
+    "exit": 1,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":24}\n",
+    "stderr": "4 |   const worker = new Worker(new URL(import.meta.url));\n5 |   let n = 0;\n6 |   const start = performance.now();\n7 |   worker.on('message', buffer => {\n8 |     if (!(buffer instanceof ArrayBuffer) || buffer.byteLength !== size)\n9 |       throw new Error('Worker did not preserve the transferred payload');\n                                                                           ^\nerror: Worker did not preserve the transferred payload\n      at <anonymous> (/workspace/kestrel/bench/worker_transfer.mjs:9:72)\n      at emit (node:events:95:22)\n      at #onMessage (node:worker_threads:220:14)\n\nBun v1.3.11 (macOS arm64)\n"
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 4,
+    "exit": 1,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":24}\n",
+    "stderr": "4 |   const worker = new Worker(new URL(import.meta.url));\n5 |   let n = 0;\n6 |   const start = performance.now();\n7 |   worker.on('message', buffer => {\n8 |     if (!(buffer instanceof ArrayBuffer) || buffer.byteLength !== size)\n9 |       throw new Error('Worker did not preserve the transferred payload');\n                                                                           ^\nerror: Worker did not preserve the transferred payload\n      at <anonymous> (/workspace/kestrel/bench/worker_transfer.mjs:9:72)\n      at emit (node:events:95:22)\n      at #onMessage (node:worker_threads:220:14)\n\nBun v1.3.11 (macOS arm64)\n"
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":10}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":11}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 5,
+    "exit": 1,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":23}\n",
+    "stderr": "4 |   const worker = new Worker(new URL(import.meta.url));\n5 |   let n = 0;\n6 |   const start = performance.now();\n7 |   worker.on('message', buffer => {\n8 |     if (!(buffer instanceof ArrayBuffer) || buffer.byteLength !== size)\n9 |       throw new Error('Worker did not preserve the transferred payload');\n                                                                           ^\nerror: Worker did not preserve the transferred payload\n      at <anonymous> (/workspace/kestrel/bench/worker_transfer.mjs:9:72)\n      at emit (node:events:95:22)\n      at #onMessage (node:worker_threads:220:14)\n\nBun v1.3.11 (macOS arm64)\n"
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":128,\"ticks\":62}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":66,\"ticks\":54}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":69,\"ticks\":57}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":90,\"ticks\":45}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":64,\"ticks\":35}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":64,\"ticks\":53}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":66,\"ticks\":54}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":69,\"ticks\":36}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":61,\"ticks\":32}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":68,\"ticks\":55}\n",
+    "stderr": ""
+  }
+]

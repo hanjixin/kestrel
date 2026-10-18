@@ -1,0 +1,9 @@
+PASS http_request_metadata.mjs exits=[0, 0]
+PASS http_early_body_read.mjs exits=[0, 0]
+PASS http_streaming.mjs exits=[0, 0]
+PASS http_stream_lifecycle.mjs exits=[0, 0]
+PASS http_end_buffer.mjs exits=[0, 0]
+PASS server_close_active.mjs exits=[0, 0]
+PASS server_close_idle.mjs exits=[0, 0]
+PASS http_async_close.mjs exits=[0, 0]
+8/8 passed

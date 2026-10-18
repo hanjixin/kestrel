@@ -1,8 +1,7 @@
 // node:worker_threads — Worker runs a module on its own thread with its own isolate;
-// messages are JSON with typed arrays encoded.
+// messages use V8 structured serialization and transfer backing stores without copying.
 import { ops, nodeError } from "ext:kestrel/internal.js";
 import { EventEmitter } from "ext:kestrel/node/events.js";
-import { Buffer } from "ext:kestrel/node/buffer.js";
 
 // Values here are refreshed by _refresh() before a worker's main module runs
 // (module code is evaluated once, at snapshot time, so these cannot be constants).
@@ -13,34 +12,17 @@ export let parentPort = null;
 export const resourceLimits = {};
 export const SHARE_ENV = Symbol("nodejs.worker_threads.SHARE_ENV");
 
-function encode(v) {
-  return JSON.stringify(v, (k, x) => {
-    if (x instanceof Uint8Array) return { __k_u8: Buffer.from(x).toString("base64"), buffer: x.constructor.name === "Buffer" };
-    if (ArrayBuffer.isView(x)) return { __k_ta: x.constructor.name, data: Buffer.from(x.buffer, x.byteOffset, x.byteLength).toString("base64") };
-    if (x instanceof ArrayBuffer) return { __k_ab: Buffer.from(x).toString("base64") };
-    if (x instanceof Map) return { __k_map: [...x] };
-    if (x instanceof Set) return { __k_set: [...x] };
-    if (x instanceof Date) return { __k_date: x.getTime() };
-    if (x instanceof Error) return { __k_err: { name: x.name, message: x.message, stack: x.stack } };
-    if (typeof x === "bigint") return { __k_big: x.toString() };
-    return x;
-  });
+const untransferable = new WeakSet();
+function encode(value, transferList = []) {
+  const seen = new Set();
+  for (const buffer of transferList) {
+    if (!(buffer instanceof ArrayBuffer) || buffer.detached || untransferable.has(buffer) || seen.has(buffer))
+      throw Object.assign(new Error("Invalid transfer list"), { name: "DataCloneError" });
+    seen.add(buffer);
+  }
+  return ops.op_clone_encode(value, transferList);
 }
-function decode(s) {
-  return JSON.parse(s, (k, x) => {
-    if (x && typeof x === "object") {
-      if (x.__k_u8 !== undefined) { const b = Buffer.from(x.__k_u8, "base64"); return x.buffer ? b : new Uint8Array(b); }
-      if (x.__k_ta !== undefined) { const b = Buffer.from(x.data, "base64"); const C = globalThis[x.__k_ta]; return C ? new C(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)) : b; }
-      if (x.__k_ab !== undefined) { const b = Buffer.from(x.__k_ab, "base64"); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); }
-      if (x.__k_map !== undefined) return new Map(x.__k_map);
-      if (x.__k_set !== undefined) return new Set(x.__k_set);
-      if (x.__k_date !== undefined) return new Date(x.__k_date);
-      if (x.__k_err !== undefined) { const e = new Error(x.__k_err.message); e.name = x.__k_err.name; e.stack = x.__k_err.stack; return e; }
-      if (x.__k_big !== undefined) return BigInt(x.__k_big);
-    }
-    return x;
-  });
-}
+function decode(id) { return ops.op_clone_decode(id); }
 
 class MessagePortBase extends EventEmitter {
   constructor() { super(); this._started = false; }
@@ -52,7 +34,7 @@ class MessagePortBase extends EventEmitter {
 }
 
 class ParentPort extends MessagePortBase {
-  postMessage(v) { ops.op_worker_parent_post(encode(v)); }
+  postMessage(v, transferList) { ops.op_worker_parent_post(encode(v, transferList)); }
   close() {}
   _pump() {
     if (this._pumping) return; this._pumping = true;
@@ -67,19 +49,20 @@ export class Worker extends EventEmitter {
     if (path.startsWith("file:")) path = ops.op_k_url_to_path(path);
     if (options.eval) throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "Worker { eval: true } is not supported in kestrel yet");
     if (!path.startsWith("/")) path = globalThis.process.cwd() + "/" + path.replace(/^\.\//, "");
-    this.threadId = ops.op_worker_spawn(path, encode(options.workerData === undefined ? null : options.workerData));
+    this.threadId = ops.op_worker_spawn(path, encode(options.workerData === undefined ? null : options.workerData, options.transferList));
     this.resourceLimits = {}; this.performance = { eventLoopUtilization: () => ({}) };
     this.stdout = null; this.stderr = null; this.stdin = null;
     (async () => {
       try {
         for (;;) { const m = await ops.op_worker_recv(this.threadId); if (m === null) break; const v = decode(m); if (v && v.__k_worker_error) this.emit("error", v.__k_worker_error); else this.emit("message", v); }
         const code = await ops.op_worker_exit_code(this.threadId);
+        this._exited = true;
         this.emit("exit", code);
       } catch (e) { this.emit("error", e); }
     })();
     queueMicrotask(() => this.emit("online"));
   }
-  postMessage(v) { ops.op_worker_post(this.threadId, encode(v)); }
+  postMessage(v, transferList) { if (this._exited) return; ops.op_worker_post(this.threadId, encode(v, transferList)); }
   terminate() { ops.op_worker_terminate(this.threadId); return new Promise((res) => this.once("exit", res)); }
   ref() {} unref() {}
   getHeapSnapshot() { return Promise.reject(new Error("not supported")); }
@@ -87,10 +70,10 @@ export class Worker extends EventEmitter {
 }
 
 export class MessageChannel { constructor() { const a = new MessagePort(), b = new MessagePort(); a._peer = b; b._peer = a; this.port1 = a; this.port2 = b; } }
-export class MessagePort extends MessagePortBase { postMessage(m) { queueMicrotask(() => this._peer && this._peer.emit("message", decode(encode(m)))); } close() { this.emit("close"); } }
+export class MessagePort extends MessagePortBase { postMessage(m, transferList) { const cloned = decode(encode(m, transferList)); queueMicrotask(() => this._peer && this._peer.emit("message", cloned)); } close() { this.emit("close"); } }
 export class BroadcastChannel extends EventEmitter { constructor(name) { super(); this.name = name; } postMessage() {} close() {} }
-export function markAsUntransferable() {}
-export function isMarkedAsUntransferable() { return false; }
+export function markAsUntransferable(value) { if (value && (typeof value === "object" || typeof value === "function")) untransferable.add(value); }
+export function isMarkedAsUntransferable(value) { return untransferable.has(value); }
 export function moveMessagePortToContext(p) { return p; }
 export function receiveMessageOnPort() { return undefined; }
 const envData = new Map();

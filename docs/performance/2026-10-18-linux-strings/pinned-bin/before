@@ -1,0 +1,5 @@
+#!/bin/sh
+case "$1" in
+  bench/hello_*) exec /usr/bin/taskset -c 2 /workspace/kestrel-linux/kestrel-before-linux-opt "$@" ;;
+  *) exec /workspace/kestrel-linux/kestrel-before-linux-opt "$@" ;;
+esac

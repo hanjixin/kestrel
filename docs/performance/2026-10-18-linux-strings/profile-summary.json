@@ -1,0 +1,206 @@
+{
+  "before": [
+    {
+      "function": "(idle)",
+      "url": "",
+      "percent": 73.127
+    },
+    {
+      "function": "Buffer",
+      "url": "ext:kestrel/node/buffer.js",
+      "percent": 4.016
+    },
+    {
+      "function": "fetch",
+      "url": "ext:kestrel/node/http.js",
+      "percent": 3.687
+    },
+    {
+      "function": "utf8Encode",
+      "url": "ext:kestrel/internal.js",
+      "percent": 2.601
+    },
+    {
+      "function": "op_k_utf8_encode",
+      "url": "",
+      "percent": 2.39
+    },
+    {
+      "function": "(program)",
+      "url": "",
+      "percent": 2.08
+    },
+    {
+      "function": "op_kestrel_http_node_request",
+      "url": "",
+      "percent": 1.586
+    },
+    {
+      "function": "_send",
+      "url": "ext:kestrel/node/http.js",
+      "percent": 1.248
+    },
+    {
+      "function": "(garbage collector)",
+      "url": "",
+      "percent": 1.084
+    },
+    {
+      "function": "trampoline",
+      "url": "ext:kestrel/bootstrap.js",
+      "percent": 0.894
+    },
+    {
+      "function": "write",
+      "url": "ext:kestrel/node/stream.js",
+      "percent": 0.488
+    },
+    {
+      "function": "Stream",
+      "url": "ext:kestrel/node/stream.js",
+      "percent": 0.46
+    },
+    {
+      "function": "_addListener",
+      "url": "ext:kestrel/node/events.js",
+      "percent": 0.387
+    },
+    {
+      "function": "IncomingMessage",
+      "url": "ext:kestrel/node/http.js",
+      "percent": 0.359
+    },
+    {
+      "function": "concat",
+      "url": "ext:kestrel/node/buffer.js",
+      "percent": 0.357
+    },
+    {
+      "function": "Writable",
+      "url": "ext:kestrel/node/stream.js",
+      "percent": 0.293
+    },
+    {
+      "function": "Readable",
+      "url": "ext:kestrel/node/stream.js",
+      "percent": 0.284
+    },
+    {
+      "function": "wdrain",
+      "url": "ext:kestrel/node/stream.js",
+      "percent": 0.279
+    },
+    {
+      "function": "Buffer",
+      "url": "ext:kestrel/node/buffer.js",
+      "percent": 0.272
+    },
+    {
+      "function": "on",
+      "url": "ext:kestrel/node/events.js",
+      "percent": 0.256
+    }
+  ],
+  "after": [
+    {
+      "function": "(idle)",
+      "url": "",
+      "percent": 84.263
+    },
+    {
+      "function": "fetch",
+      "url": "ext:kestrel/node/http.js",
+      "percent": 3.489
+    },
+    {
+      "function": "(program)",
+      "url": "",
+      "percent": 1.883
+    },
+    {
+      "function": "op_kestrel_http_node_request",
+      "url": "",
+      "percent": 1.597
+    },
+    {
+      "function": "_send",
+      "url": "ext:kestrel/node/http.js",
+      "percent": 1.098
+    },
+    {
+      "function": "(garbage collector)",
+      "url": "",
+      "percent": 1.074
+    },
+    {
+      "function": "trampoline",
+      "url": "ext:kestrel/bootstrap.js",
+      "percent": 0.839
+    },
+    {
+      "function": "wdrain",
+      "url": "ext:kestrel/node/stream.js",
+      "percent": 0.324
+    },
+    {
+      "function": "Stream",
+      "url": "ext:kestrel/node/stream.js",
+      "percent": 0.316
+    },
+    {
+      "function": "_addListener",
+      "url": "ext:kestrel/node/events.js",
+      "percent": 0.289
+    },
+    {
+      "function": "IncomingMessage",
+      "url": "ext:kestrel/node/http.js",
+      "percent": 0.267
+    },
+    {
+      "function": "OutgoingMessage",
+      "url": "ext:kestrel/node/http.js",
+      "percent": 0.24
+    },
+    {
+      "function": "on",
+      "url": "ext:kestrel/node/events.js",
+      "percent": 0.237
+    },
+    {
+      "function": "Stream",
+      "url": "ext:kestrel/node/stream.js",
+      "percent": 0.237
+    },
+    {
+      "function": "",
+      "url": "ext:core/01_core.js",
+      "percent": 0.226
+    },
+    {
+      "function": "emit",
+      "url": "ext:kestrel/node/events.js",
+      "percent": 0.218
+    },
+    {
+      "function": "Writable",
+      "url": "ext:kestrel/node/stream.js",
+      "percent": 0.21
+    },
+    {
+      "function": "write",
+      "url": "ext:kestrel/node/stream.js",
+      "percent": 0.204
+    },
+    {
+      "function": "emit",
+      "url": "ext:kestrel/node/events.js",
+      "percent": 0.194
+    },
+    {
+      "function": "write",
+      "url": "ext:kestrel/node/http.js",
+      "percent": 0.191
+    }
+  ]
+}

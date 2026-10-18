@@ -1,0 +1,162 @@
+[
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":10}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":24}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":23}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":10}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":10}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":23}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":25}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":10}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":10}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":26}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":148,\"ticks\":62}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":75,\"ticks\":58}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":77,\"ticks\":59}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":137,\"ticks\":64}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":88,\"ticks\":43}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":63,\"ticks\":53}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":65,\"ticks\":51}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":58,\"ticks\":32}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":168,\"ticks\":44}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":70,\"ticks\":55}\n",
+    "stderr": ""
+  }
+]

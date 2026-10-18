@@ -1,0 +1,65 @@
+[
+  {
+    "label": "before",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":2143}\n",
+    "stderr": ""
+  },
+  {
+    "label": "before",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":2129}\n",
+    "stderr": ""
+  },
+  {
+    "label": "before",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":2136}\n",
+    "stderr": ""
+  },
+  {
+    "label": "after",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":11}\n",
+    "stderr": ""
+  },
+  {
+    "label": "after",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":11}\n",
+    "stderr": ""
+  },
+  {
+    "label": "after",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":11}\n",
+    "stderr": ""
+  },
+  {
+    "label": "node",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":15}\n",
+    "stderr": ""
+  },
+  {
+    "label": "node",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":13}\n",
+    "stderr": ""
+  },
+  {
+    "label": "node",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":14}\n",
+    "stderr": ""
+  }
+]

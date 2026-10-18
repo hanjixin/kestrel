@@ -204,89 +204,137 @@ function cbify(syncFn) {
     queueMicrotask(() => (err ? cb(err) : cb(null, r)));
   };
 }
-export const readFile = cbify(readFileSync);
-export const writeFile = cbify(writeFileSync);
-export const appendFile = cbify(appendFileSync);
-export const stat = cbify(statSync);
-export const lstat = cbify(lstatSync);
-export const readdir = cbify(readdirSync);
-export const mkdir = cbify(mkdirSync);
-export const rm = cbify(rmSync);
-export const rmdir = cbify(rmdirSync);
-export const unlink = cbify(unlinkSync);
-export const rename = cbify(renameSync);
-export const copyFile = cbify(copyFileSync);
-export const cp = cbify(cpSync);
-export const realpath = cbify(realpathSync);
+function asyncCallback(name) {
+  return (...args) => {
+    const cb = args.pop();
+    if (typeof cb !== "function") throw nodeError("ERR_INVALID_ARG_TYPE", "callback must be a function", TypeError);
+    // Numeric descriptors remain open after readFile/writeFile.
+    if (typeof args[0] === "number") args[0] = new promises.FileHandle(args[0]);
+    promises[name](...args).then(value => cb(null, value), cb);
+  };
+}
+export const readFile = asyncCallback("readFile");
+export const writeFile = asyncCallback("writeFile");
+export const appendFile = asyncCallback("appendFile");
+export const stat = asyncCallback("stat");
+export const lstat = asyncCallback("lstat");
+export const readdir = asyncCallback("readdir");
+export const mkdir = asyncCallback("mkdir");
+export const rm = asyncCallback("rm");
+export const rmdir = asyncCallback("rmdir");
+export const unlink = asyncCallback("unlink");
+export const rename = asyncCallback("rename");
+export const copyFile = asyncCallback("copyFile");
+export const cp = asyncCallback("cp");
+export const realpath = asyncCallback("realpath");
 realpath.native = realpath;
-export const readlink = cbify(readlinkSync);
-export const symlink = cbify(symlinkSync);
-export const access = cbify(accessSync);
-export const chmod = cbify(chmodSync);
+export const readlink = asyncCallback("readlink");
+export const symlink = asyncCallback("symlink");
+export const access = asyncCallback("access");
+export const chmod = asyncCallback("chmod");
 export const chown = cbify(chownSync);
-export const utimes = cbify(utimesSync);
-export const mkdtemp = cbify(mkdtempSync);
-export const truncate = cbify(truncateSync);
-export const open = cbify(openSync);
-export const close = cbify(closeSync);
-export const fstat = cbify(fstatSync);
-export const fsync = cbify(fsyncSync);
-export const fdatasync = cbify(fdatasyncSync);
-export const ftruncate = cbify(ftruncateSync);
+export const utimes = asyncCallback("utimes");
+export const mkdtemp = asyncCallback("mkdtemp");
+export const truncate = asyncCallback("truncate");
+export function open(path, flags, mode, cb) { if (typeof mode === "function") { cb = mode; mode = undefined; } promises.open(path, flagStr(flags), mode).then(handle => cb(null, handle.fd), cb); }
+export const close = (fd, cb) => new promises.FileHandle(fd).close().then(() => cb(null), cb);
+export const fstat = (fd, ...args) => { const cb = args.pop(); new promises.FileHandle(fd).stat(...args).then(result => cb(null, result), cb); };
+export const fsync = (fd, ...args) => { const cb = args.pop(); new promises.FileHandle(fd).sync(...args).then(result => cb(null, result), cb); };
+export const fdatasync = (fd, ...args) => { const cb = args.pop(); new promises.FileHandle(fd).datasync(...args).then(result => cb(null, result), cb); };
+export const ftruncate = (fd, ...args) => { const cb = args.pop(); new promises.FileHandle(fd).truncate(...args).then(result => cb(null, result), cb); };
 export function read(fd, buffer, offset, length, position, cb) {
   if (typeof buffer === "function") { cb = buffer; buffer = Buffer.alloc(16384); offset = 0; length = buffer.length; position = null; }
   else if (typeof offset === "function") { cb = offset; const o = buffer && !ArrayBuffer.isView(buffer) ? buffer : {}; if (!ArrayBuffer.isView(buffer)) buffer = o.buffer ?? Buffer.alloc(16384); offset = o.offset ?? 0; length = o.length ?? buffer.length - offset; position = o.position ?? null; }
   else if (typeof length === "function") { cb = length; length = buffer.length - offset; position = null; }
   else if (typeof position === "function") { cb = position; position = null; }
-  let n, err = null; try { n = readSync(fd, buffer, offset, length, position); } catch (e) { err = e; }
-  queueMicrotask(() => (err ? cb(err) : cb(null, n, buffer)));
+  new promises.FileHandle(fd).read(buffer, offset, length, position).then(({bytesRead}) => cb(null, bytesRead, buffer), cb);
 }
 export function write(fd, data, ...rest) {
   const cb = rest.pop();
-  let n, err = null; try { n = writeSync(fd, data, ...rest); } catch (e) { err = e; }
-  queueMicrotask(() => (err ? cb(err) : cb(null, n, data)));
+  new promises.FileHandle(fd).write(data, ...rest).then(({bytesWritten}) => cb(null, bytesWritten, data), cb);
 }
 export const readv = (fd, buffers, position, cb) => { if (typeof position === "function") { cb = position; position = undefined; } let n, err = null; try { n = readvSync(fd, buffers, position); } catch (e) { err = e; } queueMicrotask(() => (err ? cb(err) : cb(null, n, buffers))); };
 export const writev = (fd, buffers, position, cb) => { if (typeof position === "function") { cb = position; position = undefined; } let n, err = null; try { n = writevSync(fd, buffers, position); } catch (e) { err = e; } queueMicrotask(() => (err ? cb(err) : cb(null, n, buffers))); };
-export const opendir = cbify(opendirSync);
+export const opendir = asyncCallback("opendir");
 export function exists(path, cb) { const r = existsSync(path); queueMicrotask(() => cb(r)); }
 exists[Symbol.for("nodejs.util.promisify.custom")] = (p) => Promise.resolve(existsSync(p));
 
-// ---------- streams (buffered, enough for pipe/for-await) ----------
+// ---------- streams (one in-flight native operation, demand-driven reads) ----------
 import { Readable, Writable } from "ext:kestrel/node/stream.js";
 export function createReadStream(path, opts = {}) {
+  return new ReadStream(path, opts);
+}
+export function ReadStream(path, opts = {}) {
+  if (!(this instanceof ReadStream)) return new ReadStream(path, opts);
   if (typeof opts === "string") opts = { encoding: opts };
-  const r = new Readable({ read() {}, highWaterMark: opts.highWaterMark ?? 65536, encoding: opts.encoding });
-  r.path = path; r.bytesRead = 0;
-  queueMicrotask(() => {
-    try {
-      let b = readFileSync(path);
-      if (opts.start !== undefined || opts.end !== undefined) b = b.subarray(opts.start ?? 0, opts.end !== undefined ? opts.end + 1 : undefined);
-      r.emit("open", 0); r.emit("ready");
-      const chunk = opts.highWaterMark ?? 65536;
-      for (let i = 0; i < b.length; i += chunk) { r.bytesRead += Math.min(chunk, b.length - i); r.push(b.subarray(i, i + chunk)); }
-      r.push(null);
-    } catch (e) { r.destroy(e); }
+  const r = this;
+  let reading = false, position = opts.start ?? null;
+  r.path = path; r.bytesRead = 0; r.fd = opts.fd ?? null; r.pending = r.fd === null;
+  const opened = r.pending
+    ? ops.op_fd_open_async(toPathString(path), opts.flags ?? "r", opts.mode ?? 0o666).then(fd => { r.fd = fd; r.pending = false; r.emit("open", fd); r.emit("ready"); return fd; })
+    : Promise.resolve(r.fd);
+  let closed;
+  const closeFile = () => closed ??= opened.then(fd => { r.fd = null; return ops.op_fd_close_async(fd); });
+  Readable.call(r, { ...opts, highWaterMark: opts.highWaterMark ?? 65536,
+    read(size) {
+      if (reading || r.destroyed) return;
+      reading = true;
+      (async () => {
+        const fd = await opened;
+        if (r.destroyed) return;
+        const remaining = opts.end === undefined ? size : Math.min(size, opts.end - (position ?? r.bytesRead) + 1);
+        const bytes = remaining > 0 ? await ops.op_fd_read_async(fd, remaining, position ?? -1) : new Uint8Array();
+        if (r.destroyed) return;
+        r.bytesRead += bytes.length;
+        if (position !== null) position += bytes.length;
+        reading = false;
+        if (!bytes.length) { if (opts.autoClose !== false) await closeFile(); r.push(null); }
+        else r.push(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+      })().catch(e => { reading = false; r.destroy(fsError(e, path)); });
+    },
+    destroy(err, cb) { if (opts.autoClose === false) cb(err); else closeFile().then(() => cb(err), e => cb(err || fsError(e, path))); },
   });
-  r.close = (cb) => { r.destroy(); if (cb) cb(); };
+  opened.catch(e => r.destroy(fsError(e, path)));
+  r.close = cb => { if (cb) r.once("close", cb); r.destroy(); };
   return r;
 }
 export function createWriteStream(path, opts = {}) {
+  return new WriteStream(path, opts);
+}
+export function WriteStream(path, opts = {}) {
+  if (!(this instanceof WriteStream)) return new WriteStream(path, opts);
   if (typeof opts === "string") opts = { encoding: opts };
-  const flags = opts.flags ?? "w";
-  let first = !flags.startsWith("a");
-  const w = new Writable({
-    write(chunk, enc, cb) { try { const bytes = typeof chunk === "string" ? Buffer.from(chunk, enc === "buffer" ? "utf8" : enc) : chunk; ops.op_k_fs_write_bytes(toPathString(path), bytes, !first); first = false; w.bytesWritten += bytes.length; cb(); } catch (e) { cb(fsError(e, path)); } },
-    final(cb) { cb(); },
+  const w = this;
+  let position = opts.start ?? null, closed;
+  w.path = path; w.bytesWritten = 0; w.fd = opts.fd ?? null; w.pending = w.fd === null;
+  const opened = w.pending
+    ? ops.op_fd_open_async(toPathString(path), opts.flags ?? "w", opts.mode ?? 0o666).then(fd => { w.fd = fd; w.pending = false; w.emit("open", fd); w.emit("ready"); return fd; })
+    : Promise.resolve(w.fd);
+  const closeFile = () => closed ??= opened.then(fd => { w.fd = null; return ops.op_fd_close_async(fd); });
+  Writable.call(w, { ...opts,
+    write(chunk, enc, cb) {
+      (async () => {
+        const fd = await opened;
+        const bytes = typeof chunk === "string" ? Buffer.from(chunk, enc) : chunk;
+        for (let offset = 0; offset < bytes.length;) {
+          const n = await ops.op_fd_write_async(fd, bytes.subarray(offset), position ?? -1);
+          if (!n) throw new Error("EIO: write made no progress");
+          offset += n; w.bytesWritten += n; if (position !== null) position += n;
+        }
+      })().then(() => cb(), e => cb(fsError(e, path)));
+    },
+    final(cb) { if (opts.autoClose === false) cb(); else closeFile().then(() => cb(), e => cb(fsError(e, path))); },
+    destroy(err, cb) { if (opts.autoClose === false) cb(err); else closeFile().then(() => cb(err), e => cb(err || fsError(e, path))); },
   });
-  w.path = path; w.bytesWritten = 0; w.pending = false;
-  if (first) { try { ops.op_k_fs_write_bytes(toPathString(path), new Uint8Array(0), false); first = false; } catch (e) { queueMicrotask(() => w.destroy(fsError(e, path))); } }
-  queueMicrotask(() => { w.emit("open", 0); w.emit("ready"); });
-  w.close = (cb) => { w.end(); if (cb) w.once("finish", cb); };
+  opened.catch(e => w.destroy(fsError(e, path)));
+  w.close = cb => { if (cb) w.once("close", cb); w.end(); };
   return w;
 }
-export class ReadStream extends Readable {}
-export class WriteStream extends Writable {}
+// Match Node's callable constructors, including util.inherits + .call(this).
+Object.setPrototypeOf(ReadStream.prototype, Readable.prototype);
+Object.setPrototypeOf(ReadStream, Readable);
+Object.setPrototypeOf(WriteStream.prototype, Writable.prototype);
+Object.setPrototypeOf(WriteStream, Writable);
 
 import * as promises from "ext:kestrel/node/fs_promises.js";
 export { promises };

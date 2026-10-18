@@ -1,0 +1,290 @@
+[
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":19}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":92}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "node",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":39}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":80}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "node",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":40}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":21}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "node",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":38}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":21}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":90}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "node",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":38}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":63}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":16}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":92}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":17}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "node",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":37}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "kestrel",
+    "round": 6,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":16}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "node",
+    "round": 6,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":38}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/worker_transfer.mjs",
+    "runtime": "bun",
+    "round": 6,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":102}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":162,\"ticks\":80}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":269,\"ticks\":246}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "node",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":444,\"ticks\":444}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":317,\"ticks\":291}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "node",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":724,\"ticks\":724}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":163,\"ticks\":80}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "node",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":419,\"ticks\":419}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":158,\"ticks\":78}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":293,\"ticks\":268}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "node",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":685,\"ticks\":682}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":314,\"ticks\":287}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":158,\"ticks\":77}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":270,\"ticks\":249}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":156,\"ticks\":80}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "node",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":410,\"ticks\":411}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "kestrel",
+    "round": 6,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":156,\"ticks\":79}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "node",
+    "round": 6,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":711,\"ticks\":712}\n",
+    "stderr": ""
+  },
+  {
+    "fixture": "bench/fs_read.mjs",
+    "runtime": "bun",
+    "round": 6,
+    "exit": 0,
+    "stdout": "{\"bytes\":536870912,\"milliseconds\":301,\"ticks\":276}\n",
+    "stderr": ""
+  }
+]

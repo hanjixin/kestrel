@@ -11,7 +11,9 @@ use bytes::Bytes;
 use deno_core::OpState;
 use deno_error::JsErrorBox;
 use http_body_util::Full;
-use hyper::body::Incoming as IncomingBody;
+use hyper::body::{Incoming as IncomingBody, Body, Frame, SizeHint};
+use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+use std::{pin::Pin, task::{Context, Poll}};
 use hyper::header::{HeaderValue, CONTENT_TYPE};
 use hyper::service::service_fn;
 use hyper::{Request, Response};
@@ -140,7 +142,7 @@ pub(crate) fn dispatch(rid: u32, req: CurrentReq, body: Option<IncomingBody>, t0
         let parts = match req { CurrentReq::Parts(p) => p, CurrentReq::Raw(r) => r.to_parts() };
         let Some(body) = body else {
             // No handler on this thread and no hyper body to queue: answer 503.
-            return Step::Done(Outgoing { status: 503, headers: String::new(), body: Bytes::from_static(b"Service Unavailable") });
+            return Step::Done(Outgoing { status: 503, headers: String::new(), body: Bytes::from_static(b"Service Unavailable"), stream: None });
         };
         let tls = SERVER_TLS.with(|t| t.borrow().get(&rid).copied().unwrap_or(false));
         return Step::Queue(IncomingReq { parts, body, respond: rtx, t0, tls }, rrx);
@@ -178,7 +180,10 @@ pub(crate) fn dispatch(rid: u32, req: CurrentReq, body: Option<IncomingBody>, t0
                 Some(p) => {
                     if p.body.is_none() { p.body = body.take(); }
                     p.has_body = has_body;
-                    if let Some(out) = p.early.take() { hs.pending.remove(&id); Step::Done(out) }
+                    if let Some(out) = p.early.take() {
+                        if !p.has_body || out.stream.as_ref().is_none_or(|s| s.complete.load(Ordering::Relaxed)) { hs.pending.remove(&id); }
+                        Step::Done(out)
+                    }
                     else { p.respond = Some(rtx); Step::Pending(rrx) }
                 }
                 None => {
@@ -227,12 +232,12 @@ unsafe fn call_js(d: &Direct, id: u32) -> Option<Outgoing> {
     let f = v8::Local::new(scope, &d.trampoline);
     let recv: v8::Local<v8::Value> = v8::undefined(scope).into();
     let arg: v8::Local<v8::Value> = v8::Number::new(scope, id as f64).into();
-    let err = || Outgoing { status: 500, headers: String::new(), body: Bytes::from_static(b"Internal Server Error") };
+    let err = || Outgoing { status: 500, headers: String::new(), body: Bytes::from_static(b"Internal Server Error"), stream: None };
     let Some(r) = f.call(scope, recv, &[arg]) else { return Some(err()) };
     if r.is_string() {
         // Fast path: 200 text/plain with a string body.
         let sv: v8::Local<v8::String> = r.try_into().ok()?;
-        return Some(Outgoing { status: 200, headers: String::new(), body: v8_string_bytes(scope, sv) });
+        return Some(Outgoing { status: 200, headers: String::new(), body: v8_string_bytes(scope, sv), stream: None });
     }
     if !r.is_array() {
         // Promise-returning handler: give already-settled promises a chance to run now.
@@ -255,7 +260,46 @@ unsafe fn call_js(d: &Direct, id: u32) -> Option<Outgoing> {
         }
         _ => Bytes::new(),
     };
-    Some(Outgoing { status, headers, body })
+    // Synchronous Node responses schedule readable-end/write/close callbacks.
+    // Drain them as for the promise route, after taking an owned body snapshot.
+    scope.perform_microtask_checkpoint();
+    Some(Outgoing { status, headers, body, stream: None })
+}
+
+pub struct ResponseStream {
+    rx: mpsc::Receiver<Bytes>,
+    pub suppress: bool,
+    closed: Arc<AtomicBool>,
+    notify: Arc<tokio::sync::Notify>,
+    complete: Arc<AtomicBool>,
+}
+impl Drop for ResponseStream {
+    fn drop(&mut self) { self.closed.store(true, Ordering::Relaxed); self.notify.notify_waiters(); }
+}
+struct StreamSender { tx: mpsc::Sender<Bytes>, complete: Arc<AtomicBool>, closed: Arc<AtomicBool>, notify: Arc<tokio::sync::Notify>, request: u32, suppress: bool }
+#[derive(Default)]
+struct Streams { next: u32, senders: HashMap<u32, StreamSender> }
+fn streams(state: &mut OpState) -> &mut Streams {
+    if state.try_borrow::<Streams>().is_none() { state.put(Streams::default()); }
+    state.borrow_mut::<Streams>()
+}
+enum ResponseBody { Full(Full<Bytes>), Stream(Box<ResponseStream>) }
+impl Body for ResponseBody {
+    type Data = Bytes;
+    type Error = std::io::Error;
+    fn poll_frame(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Result<Frame<Bytes>, Self::Error>>> {
+        match &mut *self {
+            Self::Full(body) => Pin::new(body).poll_frame(cx).map(|r| r.map(|r| r.map_err(|never| match never {}))),
+            Self::Stream(body) => match body.rx.poll_recv(cx) {
+                Poll::Ready(Some(bytes)) => Poll::Ready(Some(Ok(Frame::data(bytes)))),
+                Poll::Ready(None) if body.complete.load(Ordering::Relaxed) => Poll::Ready(None),
+                Poll::Ready(None) => Poll::Ready(Some(Err(std::io::Error::other("response stream aborted")))),
+                Poll::Pending => Poll::Pending,
+            },
+        }
+    }
+    fn is_end_stream(&self) -> bool { match self { Self::Full(body) => body.is_end_stream(), Self::Stream(_) => false } }
+    fn size_hint(&self) -> SizeHint { match self { Self::Full(body) => body.size_hint(), Self::Stream(_) => SizeHint::default() } }
 }
 
 pub struct Outgoing {
@@ -263,6 +307,7 @@ pub struct Outgoing {
     /// Flattened "k\0v\0k\0v"; empty means text/plain.
     pub headers: String,
     pub body: Bytes,
+    pub stream: Option<Box<ResponseStream>>,
 }
 
 pub struct IncomingReq {
@@ -293,8 +338,8 @@ mod io_alias {
     impl<T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send> AsyncReadWriteUnpin for T {}
 }
 
-fn build_response(out: Outgoing) -> Response<Full<Bytes>> {
-    let mut resp = Response::new(Full::new(out.body));
+fn build_response(out: Outgoing) -> Response<ResponseBody> {
+    let mut resp = Response::new(match out.stream { Some(stream) => ResponseBody::Stream(stream), None => ResponseBody::Full(Full::new(out.body)) });
     *resp.status_mut() = hyper::StatusCode::from_u16(out.status).unwrap_or(hyper::StatusCode::INTERNAL_SERVER_ERROR);
     if out.headers.is_empty() {
         resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("text/plain;charset=UTF-8"));
@@ -311,6 +356,7 @@ fn build_response(out: Outgoing) -> Response<Full<Bytes>> {
 
 thread_local! {
     /// Per server id: queue for requests arriving before the handler is registered.
+    static CONTROLS: RefCell<HashMap<u32, ServerControl>> = RefCell::new(HashMap::new());
     static HYPER_TX: RefCell<HashMap<u32, mpsc::Sender<IncomingReq>>> = RefCell::new(HashMap::new());
 }
 
@@ -341,9 +387,9 @@ impl<T: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Prefixed<T> {
 }
 
 /// One request on the hyper path.
-async fn serve_one(rid: u32, req: Request<IncomingBody>, tx: mpsc::Sender<IncomingReq>) -> Result<Response<Full<Bytes>>, hyper::Error> {
+async fn serve_one(rid: u32, req: Request<IncomingBody>, tx: mpsc::Sender<IncomingReq>) -> Result<Response<ResponseBody>, hyper::Error> {
     if raw_mode() {
-        let mut resp = Response::new(Full::new(Bytes::from_static(b"Hello, World!")));
+        let mut resp = Response::new(ResponseBody::Full(Full::new(Bytes::from_static(b"Hello, World!"))));
         resp.headers_mut().insert(CONTENT_TYPE, HeaderValue::from_static("text/plain;charset=UTF-8"));
         return Ok(resp);
     }
@@ -356,31 +402,40 @@ async fn serve_one(rid: u32, req: Request<IncomingBody>, tx: mpsc::Sender<Incomi
         Step::Pending(rrx) => rrx,
         Step::Queue(msg, rrx) => {
             if tx.send(msg).await.is_err() {
-                return Ok(Response::builder().status(503).body(Full::new(Bytes::new())).unwrap());
+                return Ok(Response::builder().status(503).body(ResponseBody::Full(Full::new(Bytes::new()))).unwrap());
             }
             rrx
         }
     };
     match rrx.await {
         Ok(out) => Ok(build_response(out)),
-        Err(_) => Ok(Response::builder().status(500).body(Full::new(Bytes::new())).unwrap()),
+        Err(_) => Ok(Response::builder().status(500).body(ResponseBody::Full(Full::new(Bytes::new()))).unwrap()),
     }
 }
 
 /// The fast path met a request it does not handle: continue the connection on hyper.
-pub(crate) fn hyper_takeover(rid: u32, std_stream: std::net::TcpStream, prefix: Vec<u8>) {
+pub(crate) fn hyper_takeover(rid: u32, std_stream: std::net::TcpStream, prefix: Vec<u8>, live: Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>) {
+    let live = LiveConnection(live);
+    let Some(mut shutdown) = CONTROLS.with(|c| c.borrow().get(&rid).map(|c| c.shutdown.subscribe())) else { return };
     let Ok(stream) = tokio::net::TcpStream::from_std(std_stream) else { return };
     let tx = HYPER_TX.with(|h| h.borrow().get(&rid).cloned());
     let Some(tx) = tx else { return };
     let io = TokioIo::new(Prefixed { inner: stream, prefix, pos: 0 });
     tokio::spawn(async move {
+        let _live = live;
         let svc = service_fn(move |req: Request<IncomingBody>| {
             let tx = tx.clone();
             async move { serve_one(rid, req, tx).await }
         });
         let mut b = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
         b.http1().keep_alive(true);
-        let _ = b.serve_connection(io, svc).await;
+        let connection = b.serve_connection(io, svc);
+        tokio::pin!(connection);
+        if *shutdown.borrow() { connection.as_mut().graceful_shutdown(); }
+        tokio::select! {
+            _ = &mut connection => {},
+            _ = shutdown.changed() => { connection.as_mut().graceful_shutdown(); let _ = connection.await; }
+        }
     });
 }
 
@@ -431,6 +486,18 @@ pub struct HttpServer {
     rx: mpsc::Receiver<IncomingReq>,
 }
 
+struct ServerControl {
+    addr: SocketAddr,
+    live: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    shutdown: tokio::sync::watch::Sender<bool>,
+}
+struct LiveConnection(Option<std::sync::Arc<std::sync::atomic::AtomicUsize>>);
+impl Drop for LiveConnection {
+    fn drop(&mut self) {
+        if let Some(live) = &self.0 { live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); }
+    }
+}
+
 pub struct HttpState {
     servers: HashMap<u32, Rc<RefCell<HttpServer>>>,
     next_rid: u32,
@@ -453,8 +520,8 @@ struct Hub {
     senders: Vec<(mpsc::UnboundedSender<(std::net::TcpStream, std::sync::Arc<std::sync::atomic::AtomicUsize>)>, std::sync::Arc<std::sync::atomic::AtomicUsize>)>,
     /// Workers expected to join before the acceptor starts handing out connections.
     expected: usize,
-    /// Port actually bound (differs from the requested one for port 0).
-    port: u16,
+    stopped: bool,
+    task: Option<std::thread::JoinHandle<()>>,
 }
 static HUBS: std::sync::Mutex<Option<HashMap<SocketAddr, std::sync::Arc<std::sync::Mutex<Hub>>>>> = std::sync::Mutex::new(None);
 /// Bound address of the n-th port-0 listen of each thread, keyed by (ip, n).
@@ -487,7 +554,7 @@ pub type ConnRx = mpsc::UnboundedReceiver<(std::net::TcpStream, std::sync::Arc<s
 
 /// Join (or create) the acceptor for `addr`. Connections go to the worker with the fewest
 /// live connections, so long-lived clients spread evenly across runtimes.
-fn join_hub(addr: SocketAddr, expected: usize) -> std::io::Result<(ConnRx, u16)> {
+fn join_hub(addr: SocketAddr, expected: usize) -> std::io::Result<(ConnRx, SocketAddr, std::sync::Arc<std::sync::atomic::AtomicUsize>)> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     let (ctx, crx) = mpsc::unbounded_channel();
     let count = std::sync::Arc::new(AtomicUsize::new(0));
@@ -515,21 +582,23 @@ fn join_hub(addr: SocketAddr, expected: usize) -> std::io::Result<(ConnRx, u16)>
     };
     if let Some(hub) = hubs.get(&addr) {
         let mut h = hub.lock().unwrap();
-        h.senders.push((ctx, count));
-        return Ok((crx, h.port));
+        h.senders.push((ctx, count.clone()));
+        return Ok((crx, addr, count));
     }
     let listener = match pre_bound { Some(l) => l, None => bind_listener(addr)? };
-    let port = listener.local_addr().map(|a| a.port()).unwrap_or(addr.port());
-    let hub = std::sync::Arc::new(std::sync::Mutex::new(Hub { senders: vec![(ctx, count)], expected, port }));
+    let hub = std::sync::Arc::new(std::sync::Mutex::new(Hub { senders: vec![(ctx, count.clone())], expected, stopped: false, task: None }));
     hubs.insert(addr, hub.clone());
-    std::thread::Builder::new()
+    let thread_hub = hub.clone();
+    let task = std::thread::Builder::new()
         .name(format!("kestrel-accept-{}", addr.port()))
         .spawn(move || {
+            let hub = thread_hub;
             // Give the worker runtimes a moment to boot and join, so the first connections
             // are not all pinned to whichever worker happened to be up first.
             let t0 = std::time::Instant::now();
             while t0.elapsed() < std::time::Duration::from_secs(3) {
                 let h = hub.lock().unwrap();
+                if h.stopped { return; }
                 if h.senders.len() >= h.expected {
                     break;
                 }
@@ -540,6 +609,7 @@ fn join_hub(addr: SocketAddr, expected: usize) -> std::io::Result<(ConnRx, u16)>
                 let Ok((stream, _)) = listener.accept() else { continue };
                 let _ = stream.set_nodelay(true);
                 let mut h = hub.lock().unwrap();
+                if h.stopped { break; }
                 let mut stream = Some(stream);
                 while !h.senders.is_empty() {
                     // Pack connections onto as few workers as needed (up to `pack` per worker,
@@ -572,14 +642,60 @@ fn join_hub(addr: SocketAddr, expected: usize) -> std::io::Result<(ConnRx, u16)>
                 }
             }
         })?;
-    Ok((crx, port))
+    hub.lock().unwrap().task = Some(task);
+    Ok((crx, addr, count))
+}
+
+/// Stop accepting on this worker, then drain its existing responses.
+pub(crate) fn is_closing(rid: u32) -> bool {
+    CONTROLS.with(|c| !c.borrow().contains_key(&rid))
+}
+
+pub async fn close(state: Rc<RefCell<OpState>>, rid: u32) {
+    let control = CONTROLS.with(|c| c.borrow_mut().remove(&rid));
+    let Some(control) = control else { return };
+    let task = {
+        let mut hubs = HUBS.lock().unwrap();
+        let hubs = hubs.as_mut().unwrap();
+        let mut task = None;
+        if let Some(hub) = hubs.get(&control.addr).cloned() {
+            let mut hub = hub.lock().unwrap();
+            hub.senders.retain(|(_, live)| !std::sync::Arc::ptr_eq(live, &control.live));
+            if hub.senders.is_empty() {
+                hub.stopped = true;
+                task = hub.task.take();
+                hubs.remove(&control.addr);
+                EPHEMERAL.lock().unwrap().retain(|_, addr| *addr != control.addr);
+            }
+        }
+        task
+    };
+    if let Some(task) = task {
+        // Wake the blocking acceptor so it drops the listening socket before close resolves.
+        let mut addr = control.addr;
+        if addr.ip().is_unspecified() {
+            addr.set_ip(if addr.is_ipv4() { std::net::Ipv4Addr::LOCALHOST.into() } else { std::net::Ipv6Addr::LOCALHOST.into() });
+        }
+        let _ = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(1));
+        let _ = task.join();
+    }
+    let _ = control.shutdown.send(true);
+    crate::fastpath::close_server(rid);
+    while control.live.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    HYPER_TX.with(|h| h.borrow_mut().remove(&rid));
+    DIRECT.with(|d| d.borrow_mut().remove(&rid));
+    SERVER_TLS.with(|t| t.borrow_mut().remove(&rid));
+    state_mut(&mut state.borrow_mut()).servers.remove(&rid);
 }
 
 pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32) -> Result<u32, JsErrorBox> {
     let addr: SocketAddr = format!("{host}:{port}")
         .parse()
         .map_err(|e| JsErrorBox::type_error(format!("bad address {host}:{port}: {e}")))?;
-    let (conns, bound_port) = join_hub(addr, expected_workers.max(1) as usize).map_err(|e| JsErrorBox::generic(format!("listen {addr}: {e}")))?;
+    let (conns, bound_addr, live) = join_hub(addr, expected_workers.max(1) as usize).map_err(|e| JsErrorBox::generic(format!("listen {addr}: {e}")))?;
+    let bound_port = bound_addr.port();
     let mut conns = Some(conns);
 
     let (tx, rx) = mpsc::channel::<IncomingReq>(16384);
@@ -590,6 +706,8 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
         hs.next_rid += 1;
         rid
     };
+    let (shutdown, shutdown_rx) = tokio::sync::watch::channel(false);
+    CONTROLS.with(|c| c.borrow_mut().insert(rid, ServerControl { addr: bound_addr, live, shutdown }));
     HYPER_TX.with(|h| h.borrow_mut().insert(rid, tx.clone()));
     SERVER_TLS.with(|t| t.borrow_mut().insert(rid, crate::netimpl::TLS_ACCEPTOR.with(|a| a.borrow().is_some())));
     let use_fast = crate::fastpath::enabled() && crate::netimpl::TLS_ACCEPTOR.with(|t| t.borrow().is_none()) && !raw_mode() && crate::fastpath::start_for(expected_workers.max(1));
@@ -609,6 +727,7 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
     tokio::spawn(async move {
         let Some(mut conns) = conns else { return };
         while let Some((std_stream, live)) = conns.recv().await {
+            if *shutdown_rx.borrow() { live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); continue; }
             if std_stream.set_nonblocking(true).is_err() {
                 live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
                 continue;
@@ -616,10 +735,9 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
             let Ok(stream) = tokio::net::TcpStream::from_std(std_stream) else { live.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); continue };
             let tx = tx.clone();
             let tls = tls_cfg.clone();
+            let mut shutdown = shutdown_rx.clone();
             tokio::spawn(async move {
-                struct Dec(std::sync::Arc<std::sync::atomic::AtomicUsize>);
-                impl Drop for Dec { fn drop(&mut self) { self.0.fetch_sub(1, std::sync::atomic::Ordering::Relaxed); } }
-                let _dec = Dec(live);
+                let _live = LiveConnection(Some(live));
                 // Plain TCP or TLS-terminated: both end up as a boxed AsyncRead+AsyncWrite.
                 let io: Box<dyn io_alias::AsyncReadWriteUnpin> = match tls {
                     Some(acceptor) => match acceptor.accept(stream).await {
@@ -638,7 +756,13 @@ pub fn listen(state: &mut OpState, host: &str, port: u16, expected_workers: u32)
                 // HTTP/1.1 or HTTP/2 (ALPN "h2", or the h2c preface), decided per connection.
                 let mut b = hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new());
                 b.http1().keep_alive(true);
-                let _ = b.serve_connection(io, svc).await;
+                let connection = b.serve_connection(io, svc);
+                tokio::pin!(connection);
+                if *shutdown.borrow() { connection.as_mut().graceful_shutdown(); }
+                tokio::select! {
+                    _ = &mut connection => {},
+                    _ = shutdown.changed() => { connection.as_mut().graceful_shutdown(); let _ = connection.await; }
+                }
             });
         }
     });
@@ -665,11 +789,16 @@ pub async fn accept(state: Rc<RefCell<OpState>>, rid: u32) -> Result<Vec<u32>, J
         let hs = state_mut(&mut st);
         hs.servers.get(&rid).cloned().ok_or_else(|| JsErrorBox::type_error("bad server id"))?
     };
+    let mut shutdown = CONTROLS.with(|c| c.borrow().get(&rid).map(|c| c.shutdown.subscribe()))
+        .ok_or_else(|| JsErrorBox::generic("server closed"))?;
     let mut batch: Vec<IncomingReq> = Vec::with_capacity(64);
     {
         // Only one accept loop per server, so this borrow never contends.
         let mut s = server.borrow_mut();
-        let first = s.rx.recv().await.ok_or_else(|| JsErrorBox::generic("server closed"))?;
+        let first = tokio::select! {
+            r = s.rx.recv() => r.ok_or_else(|| JsErrorBox::generic("server closed"))?,
+            _ = shutdown.changed() => return Err(JsErrorBox::generic("server closed")),
+        };
         batch.push(first);
         let cap = batch_cap();
         while batch.len() < cap {
@@ -723,6 +852,41 @@ pub fn method(state: &mut OpState, id: u32) -> String {
     with_parts(state, id, |p| p.method.as_str().to_string()).unwrap_or_default()
 }
 
+/// Node needs the original request target, not a WHATWG-normalized URL. Read all
+/// metadata in one operation, without repeatedly materializing RawReq as Parts.
+pub fn node_request(state: &mut OpState, id: u32) -> String {
+    fn parts(p: &hyper::http::request::Parts) -> String {
+        let mut out = format!("{}\0{}\0", p.method, p.uri);
+        for (k, v) in &p.headers {
+            out.push_str(k.as_str()); out.push('\0');
+            out.push_str(v.to_str().unwrap_or("")); out.push('\0');
+        }
+        out
+    }
+    if let Some(out) = CURRENT.with(|c| {
+        c.borrow().as_ref().filter(|c| c.id == id).map(|c| match &c.req {
+            CurrentReq::Parts(p) => parts(p),
+            CurrentReq::Raw(r) => {
+                let mut out = String::with_capacity(r.headers.len());
+                out.push_str(r.method()); out.push('\0');
+                out.push_str(r.path()); out.push('\0');
+                // The fast parser already validated this header block.
+                let block = String::from_utf8_lossy(&r.headers);
+                for line in block.split('\n').skip(1) {
+                    let line = line.trim_end_matches('\r');
+                    if line.is_empty() { break; }
+                    if let Some((name, value)) = line.split_once(':') {
+                        out.push_str(name); out.push('\0');
+                        out.push_str(value.trim_matches([' ', '\t'])); out.push('\0');
+                    }
+                }
+                out
+            }
+        })
+    }) { return out; }
+    state_mut(state).pending.get(&id).map(|p| parts(&p.parts)).unwrap_or_default()
+}
+
 pub fn port(state: &mut OpState, rid: u32) -> u16 {
     let hs = state_mut(state);
     hs.servers.get(&rid).map(|s| s.borrow().port).unwrap_or(0)
@@ -761,6 +925,9 @@ fn with_tls(state: &mut OpState, id: u32) -> bool {
 }
 
 pub fn respond(state: &mut OpState, id: u32, status: u16, headers: &str, body: Bytes) -> Result<(), JsErrorBox> {
+    respond_out(state, id, Outgoing { status, headers: headers.to_string(), body, stream: None })
+}
+fn respond_out(state: &mut OpState, id: u32, out: Outgoing) -> Result<(), JsErrorBox> {
     let hs = state_mut(state);
     park_current(hs, id);
     let p = hs.pending.get_mut(&id).ok_or_else(|| JsErrorBox::type_error("response already sent"))?;
@@ -771,16 +938,17 @@ pub fn respond(state: &mut OpState, id: u32, status: u16, headers: &str, body: B
     let Some(tx) = p.respond.take() else {
         // Answered during the trampoline's microtask checkpoint, before the hyper task armed
         // its channel: park the result; the task picks it up when it arms.
-        p.early = Some(Outgoing { status, headers: headers.to_string(), body });
+        p.early = Some(out);
         return Ok(());
     };
     if let Some(t0) = p.t0 {
         let us = t0.elapsed().as_micros() as u32;
         STATS.with(|s| { if let Some(st) = s.borrow_mut().as_mut() { st.lat_us.push(us); } });
     }
-    let _ = tx.send(Outgoing { status, headers: headers.to_string(), body });
+    let keep_body = out.stream.is_some() && p.has_body;
+    let _ = tx.send(out);
     // The handler is done with this request; an unread body is dropped with the slot.
-    hs.pending.remove(&id);
+    if !keep_body { hs.pending.remove(&id); }
     Ok(())
 }
 
@@ -798,7 +966,10 @@ pub async fn body(state: Rc<RefCell<OpState>>, id: u32) -> Result<Vec<u8>, JsErr
             // erroring (a consumer may read after the response is done).
             let Some(p) = hs.pending.get_mut(&id) else { break None };
             if let Some(b) = p.body.take() { break Some(b); }
-            if p.answered || !p.has_body { break None; }
+            // A streamed header may be committed during the trampoline's
+            // microtask checkpoint, before hyper has attached the request body.
+            let early_stream = p.early.as_ref().is_some_and(|out| out.stream.is_some());
+            if !p.has_body || (p.answered && !early_stream) { break None; }
         }
         BODY_WAIT.with(|w| w.set(true));
         tokio::task::yield_now().await;
@@ -871,4 +1042,85 @@ pub fn spawn_workers(n: u32) -> Result<(), JsErrorBox> {
             .map_err(|e| JsErrorBox::generic(e.to_string()))?;
     }
     Ok(())
+}
+
+/// Commit headers immediately. Each stream buffers at most one 64 KiB chunk in
+/// addition to the transport's current write and the JS Writable high-water mark.
+pub fn stream_start(state: &mut OpState, id: u32, status: u16, headers: &str) -> Result<u32, JsErrorBox> {
+    let suppress = method(state, id) == "HEAD" || status == 204 || status == 304 || status < 200;
+    let (tx, rx) = mpsc::channel(1);
+    let complete = Arc::new(AtomicBool::new(false));
+    let closed = Arc::new(AtomicBool::new(false));
+    let notify = Arc::new(tokio::sync::Notify::new());
+    let response = Outgoing { status, headers: headers.to_string(), body: Bytes::new(), stream: Some(Box::new(ResponseStream { rx, suppress, complete: complete.clone(), closed: closed.clone(), notify: notify.clone() })) };
+    respond_out(state, id, response)?;
+    let streams = streams(state); let stream_id = streams.next; streams.next += 1;
+    streams.senders.insert(stream_id, StreamSender { tx, complete, closed, notify, request: id, suppress });
+    Ok(stream_id)
+}
+pub async fn stream_write(state: Rc<RefCell<OpState>>, id: u32, bytes: Vec<u8>) -> Result<(), JsErrorBox> {
+    let (tx, suppress) = streams(&mut state.borrow_mut()).senders.get(&id).map(|s| (s.tx.clone(), s.suppress)).ok_or_else(|| JsErrorBox::generic("response stream closed"))?;
+    if suppress { return Ok(()); }
+    let bytes = Bytes::from(bytes);
+    for chunk in (0..bytes.len()).step_by(65536) {
+        tx.send(bytes.slice(chunk..(chunk + 65536).min(bytes.len()))).await.map_err(|_| JsErrorBox::generic("client disconnected"))?;
+    }
+    Ok(())
+}
+pub fn stream_end(state: &mut OpState, id: u32, abort: bool) {
+    if let Some(stream) = streams(state).senders.remove(&id) {
+        stream.complete.store(!abort, Ordering::Relaxed);
+        let hs = state_mut(state);
+        if hs.pending.get(&stream.request).is_some_and(|p| p.early.is_none()) { hs.pending.remove(&stream.request); }
+    }
+}
+
+/// Only connections that actually stream leave the fast loop. Their current
+/// response is written with backpressure, then keepalive/pipelined requests go
+/// through hyper. The live guard remains owned until the whole connection ends.
+pub(crate) fn streaming_takeover(rid: u32, socket: std::net::TcpStream, mut prefix: Vec<u8>, previous: Vec<u8>, mut out: Outgoing, close: bool, live: Option<Arc<std::sync::atomic::AtomicUsize>>) {
+    let mut guard = LiveConnection(live);
+    let Ok(mut socket) = tokio::net::TcpStream::from_std(socket) else { return };
+    let mut headers = previous;
+    crate::fastpath::write_response(&mut headers, &out, close);
+    let mut stream = out.stream.take().unwrap();
+    let chunked = !stream.suppress && !out.headers.split('\0').step_by(2).any(|k| k.eq_ignore_ascii_case("content-length"));
+    tokio::spawn(async move {
+        use tokio::io::{AsyncWriteExt, AsyncReadExt};
+        let result: std::io::Result<()> = async {
+            socket.write_all(&headers).await?;
+            let mut inbound = [0u8; 4096];
+            loop {
+                let chunk = tokio::select! {
+                    chunk = stream.rx.recv() => match chunk { Some(chunk) => chunk, None => break },
+                    received = socket.read(&mut inbound), if prefix.len() < 65536 => {
+                        let n = received?;
+                        if n == 0 { return Err(std::io::Error::other("client disconnected")); }
+                        prefix.extend_from_slice(&inbound[..n]);
+                        continue;
+                    }
+                };
+                if chunk.is_empty() || stream.suppress { continue; }
+                if chunked { socket.write_all(format!("{:x}\r\n", chunk.len()).as_bytes()).await?; }
+                socket.write_all(&chunk).await?;
+                if chunked { socket.write_all(b"\r\n").await?; }
+            }
+            if !stream.complete.load(Ordering::Relaxed) { return Err(std::io::Error::other("aborted response")); }
+            if chunked { socket.write_all(b"0\r\n\r\n").await?; }
+            Ok(())
+        }.await;
+        if result.is_ok() && !close && !is_closing(rid) {
+            if let Ok(socket) = socket.into_std() { hyper_takeover(rid, socket, prefix, guard.0.take()); }
+        }
+    });
+}
+
+pub async fn stream_closed(state: Rc<RefCell<OpState>>, id: u32) -> bool {
+    let signals = streams(&mut state.borrow_mut()).senders.get(&id).map(|s| (s.closed.clone(), s.notify.clone(), s.complete.clone(), s.suppress));
+    let Some((closed, notify, complete, suppress)) = signals else { return false };
+    loop {
+        let notified = notify.notified();
+        if closed.load(Ordering::Relaxed) { return !suppress && !complete.load(Ordering::Relaxed); }
+        notified.await;
+    }
 }

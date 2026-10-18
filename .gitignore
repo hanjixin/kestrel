@@ -4,3 +4,8 @@ target-linux*/
 test/compat/napi/hello.node
 test/compat/node_modules/
 test/compat/package-lock.json
+
+# Python test caches and retained benchmark evidence
+__pycache__/
+*.py[cod]
+!docs/performance/**/*.log

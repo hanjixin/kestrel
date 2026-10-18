@@ -1,0 +1,24 @@
+bench/hello_kestrel.ts before 1: 80150 req/s RSS=47460 KiB
+bench/hello_kestrel.ts after 1: 73862 req/s RSS=48068 KiB
+bench/hello_kestrel.ts after 2: 68093 req/s RSS=49208 KiB
+bench/hello_kestrel.ts before 2: 96313 req/s RSS=47168 KiB
+bench/hello_kestrel.ts before 3: 85918 req/s RSS=50224 KiB
+bench/hello_kestrel.ts after 3: 69578 req/s RSS=50144 KiB
+bench/hello_node.mjs before 1: 51413 req/s RSS=55124 KiB
+bench/hello_node.mjs after 1: 54006 req/s RSS=56872 KiB
+bench/hello_node.mjs after 2: 53546 req/s RSS=54572 KiB
+bench/hello_node.mjs before 2: 47809 req/s RSS=55532 KiB
+bench/hello_node.mjs before 3: 52925 req/s RSS=58652 KiB
+bench/hello_node.mjs after 3: 52086 req/s RSS=54848 KiB
+{
+  "bench/hello_kestrel.ts": {
+    "before": 85917.53,
+    "after": 69577.56,
+    "change_percent": -19.01820268808938
+  },
+  "bench/hello_node.mjs": {
+    "before": 51412.86,
+    "after": 53545.91,
+    "change_percent": 4.1488647003881995
+  }
+}

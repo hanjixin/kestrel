@@ -1,3 +1,4 @@
+import { encodeMessage, MessageDecoder, closeChannel } from "ext:kestrel/ipc.js";
 // Globals that node:* modules may touch at evaluation time. Evaluated before them.
 import { core, ops, inspect, format, utf8Encode, utf8Decode, nodeError } from "ext:kestrel/internal.js";
 import { URL, URLSearchParams } from "ext:kestrel/node/url.js";
@@ -318,27 +319,27 @@ process.env = new Proxy({}, {
   has: (t, k) => k in t, ownKeys: (t) => Reflect.ownKeys(t), getOwnPropertyDescriptor: (t, k) => Reflect.getOwnPropertyDescriptor(t, k),
 });
 // IPC channel inherited from child_process.fork (KESTREL_IPC_FD).
-function setupIpcChild(fd) {
+function setupIpcChild(fd, advanced) {
   let rid = null, started = false;
   const open = () => { if (rid === null) { rid = ops.op_net_from_fd(fd); process.connected = true; process.channel = {}; } return rid; };
   const pump = () => {
     if (started) return; started = true; open();
     (async () => {
-      let buf = "";
+      const decoder = new MessageDecoder(advanced);
       try {
-        for (;;) { const chunk = await ops.op_net_read(rid); if (chunk.length === 0) break; buf += utf8Decode(chunk); let i; while ((i = buf.indexOf("\n")) !== -1) { const line = buf.slice(0, i); buf = buf.slice(i + 1); if (line) process.emit("message", JSON.parse(line)); } }
+        for (;;) { const chunk = await ops.op_net_read(rid); if (chunk.length === 0) break; decoder.push(chunk, value => process.emit("message", value)); }
       } catch {}
-      if (process.connected) { process.connected = false; process.emit("disconnect"); }
+      if (process.connected) { process.connected = false; closeChannel(rid).catch(() => {}).then(() => process.emit("disconnect")); }
     })();
   };
   process.send = (message, sendHandle, options, callback) => {
     if (typeof sendHandle === "function") callback = sendHandle; else if (typeof options === "function") callback = options;
     open();
     if (!process.connected) { const e = nodeError("ERR_IPC_CHANNEL_CLOSED", "Channel closed"); if (callback) { queueMicrotask(() => callback(e)); return false; } throw e; }
-    ops.op_net_write(rid, utf8Encode(JSON.stringify(message) + "\n")).then(() => callback && callback(null), (e) => { if (callback) callback(e); else process.emit("error", e); });
+    ops.op_net_write(rid, encodeMessage(message, advanced)).then(() => callback && callback(null), (e) => { if (callback) callback(e); else process.emit("error", e); });
     return true;
   };
-  process.disconnect = () => { if (!process.connected) return; process.connected = false; if (rid !== null) ops.op_net_shutdown(rid).then(() => {}, () => {}); process.emit("disconnect"); };
+  process.disconnect = () => { if (!process.connected) return; process.connected = false; if (rid !== null) closeChannel(rid).catch(() => {}).then(() => process.emit("disconnect")); else queueMicrotask(() => process.emit("disconnect")); };
   process.connected = true;
   const origOn = process.on;
   process.on = function (ev, fn) { const r = origOn.call(process, ev, fn); if (ev === "message") pump(); return r; };
@@ -347,7 +348,7 @@ function setupIpcChild(fd) {
 }
 globalThis.__kestrel_init = (argv, env, platform, pid) => {
   startMs = ops.op_k_now_ms();
-  if (env.KESTREL_IPC_FD) { setupIpcChild(Number(env.KESTREL_IPC_FD)); }
+  if (env.KESTREL_IPC_FD || env.NODE_CHANNEL_FD) { setupIpcChild(Number(env.KESTREL_IPC_FD || env.NODE_CHANNEL_FD), (env.KESTREL_IPC_SERIALIZATION || env.NODE_CHANNEL_SERIALIZATION_MODE) === "advanced"); }
   timeOrigin = Date.now() - startMs;
   process.argv = [argv[0] === "kestrel" ? getOs().exec_path || "kestrel" : argv[0], ...argv.slice(1)];
   process.argv0 = "kestrel";

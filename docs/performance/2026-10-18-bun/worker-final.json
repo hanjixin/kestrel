@@ -1,0 +1,72 @@
+[
+  {
+    "runtime": "kestrel",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":12}\n",
+    "stderr": ""
+  },
+  {
+    "runtime": "bun",
+    "round": 1,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":52}\n",
+    "stderr": ""
+  },
+  {
+    "runtime": "bun",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":24}\n",
+    "stderr": ""
+  },
+  {
+    "runtime": "kestrel",
+    "round": 2,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":11}\n",
+    "stderr": ""
+  },
+  {
+    "runtime": "kestrel",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":11}\n",
+    "stderr": ""
+  },
+  {
+    "runtime": "bun",
+    "round": 3,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":25}\n",
+    "stderr": ""
+  },
+  {
+    "runtime": "bun",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":24}\n",
+    "stderr": ""
+  },
+  {
+    "runtime": "kestrel",
+    "round": 4,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":12}\n",
+    "stderr": ""
+  },
+  {
+    "runtime": "kestrel",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":11}\n",
+    "stderr": ""
+  },
+  {
+    "runtime": "bun",
+    "round": 5,
+    "exit": 0,
+    "stdout": "{\"roundtrips\":200,\"bytes\":1048576,\"milliseconds\":25}\n",
+    "stderr": ""
+  }
+]

@@ -1,0 +1,275 @@
+{
+  "platform": "Linux-5.15.0-191-generic-x86_64-with-glibc2.35",
+  "bun_version": "1.4.3",
+  "node_version": "v22.12.0",
+  "rounds": 6,
+  "duration": 5,
+  "summary": {
+    "native-http": {
+      "kestrel": {
+        "rps": 81881.725,
+        "rss_mib": 48.4609375
+      },
+      "bun": {
+        "rps": 75012.95999999999,
+        "rss_mib": 31.296875
+      }
+    },
+    "node-http": {
+      "kestrel": {
+        "rps": 63407.73,
+        "rss_mib": 53.958984375
+      },
+      "bun": {
+        "rps": 56541.740000000005,
+        "rss_mib": 56.02734375
+      },
+      "node": {
+        "rps": 39709.925,
+        "rss_mib": 75.69921875
+      }
+    }
+  },
+  "samples": [
+    {
+      "workload": "native-http",
+      "runtime": "kestrel",
+      "round": 1,
+      "rps": 82434.95,
+      "rss_kib": 49804,
+      "output": "Running 5s test @ http://127.0.0.1:45167/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   772.51us  370.17us   6.04ms   70.82%\n    Req/Sec    41.54k     3.58k   45.56k    52.00%\n  Latency Distribution\n     50%    0.92ms\n     75%    0.93ms\n     90%    0.95ms\n     99%    1.59ms\n  413412 requests in 5.02s, 50.86MB read\nRequests/sec:  82434.95\nTransfer/sec:     10.14MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "bun",
+      "round": 1,
+      "rps": 75062.87,
+      "rss_kib": 31816,
+      "output": "Running 5s test @ http://127.0.0.1:58155/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   833.81us  148.80us   1.95ms   95.41%\n    Req/Sec    37.96k     2.19k   50.97k    80.00%\n  Latency Distribution\n     50%  821.00us\n     75%  840.00us\n     90%    0.86ms\n     99%    1.65ms\n  377603 requests in 5.03s, 46.45MB read\nRequests/sec:  75062.87\nTransfer/sec:      9.23MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "bun",
+      "round": 2,
+      "rps": 74888.46,
+      "rss_kib": 32036,
+      "output": "Running 5s test @ http://127.0.0.1:42989/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   837.67us  121.05us   2.01ms   96.71%\n    Req/Sec    37.81k     1.13k   44.53k    98.00%\n  Latency Distribution\n     50%  824.00us\n     75%  839.00us\n     90%    0.86ms\n     99%    1.66ms\n  376116 requests in 5.02s, 46.27MB read\nRequests/sec:  74888.46\nTransfer/sec:      9.21MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "kestrel",
+      "round": 2,
+      "rps": 80826.14,
+      "rss_kib": 49348,
+      "output": "Running 5s test @ http://127.0.0.1:38867/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   784.18us  379.13us   2.10ms   70.24%\n    Req/Sec    40.87k     6.21k   54.79k    50.00%\n  Latency Distribution\n     50%    0.94ms\n     75%    0.95ms\n     90%    0.97ms\n     99%    1.62ms\n  406568 requests in 5.03s, 50.02MB read\nRequests/sec:  80826.14\nTransfer/sec:      9.94MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "kestrel",
+      "round": 3,
+      "rps": 82469.68,
+      "rss_kib": 50024,
+      "output": "Running 5s test @ http://127.0.0.1:50265/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   766.49us  391.04us   3.22ms   68.10%\n    Req/Sec    42.06k     7.44k   70.91k    95.00%\n  Latency Distribution\n     50%    0.93ms\n     75%    0.95ms\n     90%    0.97ms\n     99%    1.68ms\n  418617 requests in 5.08s, 51.50MB read\nRequests/sec:  82469.68\nTransfer/sec:     10.15MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "bun",
+      "round": 3,
+      "rps": 75096.3,
+      "rss_kib": 32228,
+      "output": "Running 5s test @ http://127.0.0.1:49409/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   831.27us  155.26us   2.04ms   94.44%\n    Req/Sec    38.04k     2.57k   55.44k    93.00%\n  Latency Distribution\n     50%  814.00us\n     75%  831.00us\n     90%    0.85ms\n     99%    1.65ms\n  378368 requests in 5.04s, 46.55MB read\nRequests/sec:  75096.30\nTransfer/sec:      9.24MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "bun",
+      "round": 4,
+      "rps": 74877.23,
+      "rss_kib": 32076,
+      "output": "Running 5s test @ http://127.0.0.1:48555/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   831.64us  129.12us   1.95ms   94.24%\n    Req/Sec    38.08k     3.45k   62.10k    94.00%\n  Latency Distribution\n     50%  837.00us\n     75%    0.86ms\n     90%    0.87ms\n     99%    1.56ms\n  378761 requests in 5.06s, 46.60MB read\nRequests/sec:  74877.23\nTransfer/sec:      9.21MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "kestrel",
+      "round": 4,
+      "rps": 81426.29,
+      "rss_kib": 50016,
+      "output": "Running 5s test @ http://127.0.0.1:32897/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   780.31us  377.14us   5.26ms   70.37%\n    Req/Sec    41.15k     2.01k   43.74k    52.00%\n  Latency Distribution\n     50%    0.93ms\n     75%    0.94ms\n     90%    0.97ms\n     99%    1.61ms\n  409246 requests in 5.03s, 50.35MB read\nRequests/sec:  81426.29\nTransfer/sec:     10.02MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "kestrel",
+      "round": 5,
+      "rps": 82124.89,
+      "rss_kib": 49444,
+      "output": "Running 5s test @ http://127.0.0.1:59925/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   771.15us  381.74us  14.91ms   69.75%\n    Req/Sec    41.70k     6.24k   69.04k    77.23%\n  Latency Distribution\n     50%    0.92ms\n     75%    0.94ms\n     90%    0.96ms\n     99%    1.63ms\n  418850 requests in 5.10s, 51.53MB read\nRequests/sec:  82124.89\nTransfer/sec:     10.10MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "bun",
+      "round": 5,
+      "rps": 74963.05,
+      "rss_kib": 31988,
+      "output": "Running 5s test @ http://127.0.0.1:43077/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   834.90us  153.84us   1.95ms   94.00%\n    Req/Sec    37.95k     2.59k   55.00k    92.00%\n  Latency Distribution\n     50%  821.00us\n     75%  840.00us\n     90%    0.86ms\n     99%    1.66ms\n  377629 requests in 5.04s, 46.46MB read\nRequests/sec:  74963.05\nTransfer/sec:      9.22MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "bun",
+      "round": 6,
+      "rps": 75888.14,
+      "rss_kib": 32060,
+      "output": "Running 5s test @ http://127.0.0.1:43153/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   819.28us  165.10us   1.99ms   93.81%\n    Req/Sec    38.54k     3.17k   59.69k    92.00%\n  Latency Distribution\n     50%  800.00us\n     75%  819.00us\n     90%  843.00us\n     99%    1.63ms\n  383221 requests in 5.05s, 47.15MB read\nRequests/sec:  75888.14\nTransfer/sec:      9.34MB\n"
+    },
+    {
+      "workload": "native-http",
+      "runtime": "kestrel",
+      "round": 6,
+      "rps": 81638.56,
+      "rss_kib": 49244,
+      "output": "Running 5s test @ http://127.0.0.1:42001/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency   778.26us  385.32us  21.83ms   70.75%\n    Req/Sec    41.31k     3.60k   45.60k    52.00%\n  Latency Distribution\n     50%    0.92ms\n     75%    0.94ms\n     90%    0.96ms\n     99%    1.61ms\n  410964 requests in 5.03s, 50.56MB read\nRequests/sec:  81638.56\nTransfer/sec:     10.04MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "kestrel",
+      "round": 1,
+      "rps": 63355.91,
+      "rss_kib": 56016,
+      "output": "Running 5s test @ http://127.0.0.1:42003/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.00ms  527.04us   3.36ms   64.74%\n    Req/Sec    32.03k     5.63k   42.65k    59.00%\n  Latency Distribution\n     50%    1.12ms\n     75%    1.20ms\n     90%    1.78ms\n     99%    2.22ms\n  318644 requests in 5.03s, 39.20MB read\nRequests/sec:  63355.91\nTransfer/sec:      7.79MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "bun",
+      "round": 1,
+      "rps": 56440.36,
+      "rss_kib": 56808,
+      "output": "Running 5s test @ http://127.0.0.1:34885/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.28ms    1.56ms  30.66ms   97.29%\n    Req/Sec    28.62k     3.67k   41.64k    80.00%\n  Latency Distribution\n     50%    1.04ms\n     75%    1.06ms\n     90%    1.23ms\n     99%    8.06ms\n  284595 requests in 5.04s, 47.77MB read\nRequests/sec:  56440.36\nTransfer/sec:      9.47MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "node",
+      "round": 1,
+      "rps": 39444.06,
+      "rss_kib": 77220,
+      "output": "Running 5s test @ http://127.0.0.1:48557/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.61ms  420.10us  24.50ms   95.25%\n    Req/Sec    20.00k     1.21k   28.34k    94.00%\n  Latency Distribution\n     50%    1.54ms\n     75%    1.58ms\n     90%    1.69ms\n     99%    3.11ms\n  198963 requests in 5.04s, 33.40MB read\nRequests/sec:  39444.06\nTransfer/sec:      6.62MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "bun",
+      "round": 2,
+      "rps": 55173.56,
+      "rss_kib": 57884,
+      "output": "Running 5s test @ http://127.0.0.1:36799/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.32ms    1.51ms  29.32ms   97.01%\n    Req/Sec    27.90k     3.16k   30.71k    86.00%\n  Latency Distribution\n     50%    1.08ms\n     75%    1.11ms\n     90%    1.23ms\n     99%    8.36ms\n  277558 requests in 5.03s, 46.59MB read\nRequests/sec:  55173.56\nTransfer/sec:      9.26MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "node",
+      "round": 2,
+      "rps": 39638.43,
+      "rss_kib": 76532,
+      "output": "Running 5s test @ http://127.0.0.1:58895/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.62ms  480.70us  26.48ms   95.78%\n    Req/Sec    19.97k     1.38k   22.70k    95.00%\n  Latency Distribution\n     50%    1.53ms\n     75%    1.56ms\n     90%    1.68ms\n     99%    3.17ms\n  198844 requests in 5.02s, 33.38MB read\nRequests/sec:  39638.43\nTransfer/sec:      6.65MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "kestrel",
+      "round": 2,
+      "rps": 63901.6,
+      "rss_kib": 55168,
+      "output": "Running 5s test @ http://127.0.0.1:37919/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.00ms  483.41us  11.82ms   71.08%\n    Req/Sec    32.26k   836.11    33.76k    54.00%\n  Latency Distribution\n     50%    1.17ms\n     75%    1.19ms\n     90%    1.24ms\n     99%    2.13ms\n  320875 requests in 5.02s, 39.48MB read\nRequests/sec:  63901.60\nTransfer/sec:      7.86MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "node",
+      "round": 3,
+      "rps": 39781.42,
+      "rss_kib": 77648,
+      "output": "Running 5s test @ http://127.0.0.1:51413/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.65ms    1.04ms  56.16ms   97.34%\n    Req/Sec    20.07k     1.36k   23.19k    93.00%\n  Latency Distribution\n     50%    1.54ms\n     75%    1.56ms\n     90%    1.70ms\n     99%    3.28ms\n  199578 requests in 5.02s, 33.50MB read\nRequests/sec:  39781.42\nTransfer/sec:      6.68MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "kestrel",
+      "round": 3,
+      "rps": 62950.91,
+      "rss_kib": 55868,
+      "output": "Running 5s test @ http://127.0.0.1:35717/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.02ms  506.98us   6.89ms   70.04%\n    Req/Sec    31.79k     1.45k   33.81k    52.00%\n  Latency Distribution\n     50%    1.20ms\n     75%    1.23ms\n     90%    1.28ms\n     99%    2.25ms\n  316129 requests in 5.02s, 38.89MB read\nRequests/sec:  62950.91\nTransfer/sec:      7.74MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "bun",
+      "round": 3,
+      "rps": 56643.12,
+      "rss_kib": 58296,
+      "output": "Running 5s test @ http://127.0.0.1:39773/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.27ms    1.54ms  29.34ms   97.25%\n    Req/Sec    28.70k     3.64k   37.20k    69.00%\n  Latency Distribution\n     50%    1.02ms\n     75%    1.08ms\n     90%    1.30ms\n     99%    8.37ms\n  285414 requests in 5.04s, 47.91MB read\nRequests/sec:  56643.12\nTransfer/sec:      9.51MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "node",
+      "round": 4,
+      "rps": 40095.37,
+      "rss_kib": 77576,
+      "output": "Running 5s test @ http://127.0.0.1:53729/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.59ms  378.42us  18.25ms   96.33%\n    Req/Sec    20.30k     1.39k   27.02k    95.00%\n  Latency Distribution\n     50%    1.55ms\n     75%    1.57ms\n     90%    1.71ms\n     99%    3.00ms\n  201859 requests in 5.03s, 33.88MB read\nRequests/sec:  40095.37\nTransfer/sec:      6.73MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "bun",
+      "round": 4,
+      "rps": 57175.58,
+      "rss_kib": 58076,
+      "output": "Running 5s test @ http://127.0.0.1:58581/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.24ms    1.16ms  18.95ms   97.00%\n    Req/Sec    28.92k     3.42k   38.66k    85.00%\n  Latency Distribution\n     50%    1.03ms\n     75%    1.06ms\n     90%    1.20ms\n     99%    7.54ms\n  287621 requests in 5.03s, 48.28MB read\nRequests/sec:  57175.58\nTransfer/sec:      9.60MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "kestrel",
+      "round": 4,
+      "rps": 63459.55,
+      "rss_kib": 55340,
+      "output": "Running 5s test @ http://127.0.0.1:34561/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.00ms  531.65us   7.82ms   63.52%\n    Req/Sec    32.06k     7.15k   46.05k    56.00%\n  Latency Distribution\n     50%    1.11ms\n     75%    1.20ms\n     90%    1.76ms\n     99%    2.18ms\n  319124 requests in 5.03s, 39.26MB read\nRequests/sec:  63459.55\nTransfer/sec:      7.81MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "bun",
+      "round": 5,
+      "rps": 55072.41,
+      "rss_kib": 56860,
+      "output": "Running 5s test @ http://127.0.0.1:34569/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.29ms    1.20ms  17.32ms   96.95%\n    Req/Sec    27.86k     3.12k   30.12k    88.00%\n  Latency Distribution\n     50%    1.09ms\n     75%    1.13ms\n     90%    1.22ms\n     99%    7.93ms\n  277124 requests in 5.03s, 46.51MB read\nRequests/sec:  55072.41\nTransfer/sec:      9.24MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "kestrel",
+      "round": 5,
+      "rps": 64136.72,
+      "rss_kib": 52980,
+      "output": "Running 5s test @ http://127.0.0.1:57729/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     0.99ms  503.39us   3.27ms   67.28%\n    Req/Sec    32.45k     4.19k   42.76k    43.00%\n  Latency Distribution\n     50%    1.11ms\n     75%    1.19ms\n     90%    1.37ms\n     99%    2.19ms\n  322602 requests in 5.03s, 39.69MB read\nRequests/sec:  64136.72\nTransfer/sec:      7.89MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "node",
+      "round": 5,
+      "rps": 39826.13,
+      "rss_kib": 77456,
+      "output": "Running 5s test @ http://127.0.0.1:44103/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.62ms  544.63us  22.28ms   95.24%\n    Req/Sec    20.11k     1.43k   24.55k    94.00%\n  Latency Distribution\n     50%    1.52ms\n     75%    1.56ms\n     90%    1.67ms\n     99%    3.20ms\n  200151 requests in 5.03s, 33.59MB read\nRequests/sec:  39826.13\nTransfer/sec:      6.68MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "kestrel",
+      "round": 6,
+      "rps": 63232.73,
+      "rss_kib": 54512,
+      "output": "Running 5s test @ http://127.0.0.1:45249/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.01ms  489.19us  13.19ms   71.15%\n    Req/Sec    31.95k     2.67k   35.09k    53.00%\n  Latency Distribution\n     50%    1.18ms\n     75%    1.20ms\n     90%    1.26ms\n     99%    2.15ms\n  317795 requests in 5.03s, 39.10MB read\nRequests/sec:  63232.73\nTransfer/sec:      7.78MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "node",
+      "round": 6,
+      "rps": 38436.71,
+      "rss_kib": 78376,
+      "output": "Running 5s test @ http://127.0.0.1:56103/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.67ms  490.15us  12.37ms   97.09%\n    Req/Sec    19.46k     1.38k   20.34k    96.00%\n  Latency Distribution\n     50%    1.59ms\n     75%    1.61ms\n     90%    1.75ms\n     99%    3.33ms\n  193554 requests in 5.04s, 32.49MB read\nRequests/sec:  38436.71\nTransfer/sec:      6.45MB\n"
+    },
+    {
+      "workload": "node-http",
+      "runtime": "bun",
+      "round": 6,
+      "rps": 56688.86,
+      "rss_kib": 56352,
+      "output": "Running 5s test @ http://127.0.0.1:58929/\n  2 threads and 64 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     1.27ms    1.51ms  28.91ms   97.25%\n    Req/Sec    28.74k     3.50k   42.68k    85.00%\n  Latency Distribution\n     50%    1.05ms\n     75%    1.08ms\n     90%    1.19ms\n     99%    7.87ms\n  285938 requests in 5.04s, 47.99MB read\nRequests/sec:  56688.86\nTransfer/sec:      9.52MB\n"
+    }
+  ]
+}
