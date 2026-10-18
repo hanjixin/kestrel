@@ -1,0 +1,1 @@
+[{"name": "baseline", "cmd": ["./kestrel-baseline"]}, {"name": "epoll", "cmd": ["./kestrel-final"]}, {"name": "bun", "cmd": ["/home/ubuntu/kb/bun/bun"]}, {"name": "node", "cmd": ["/home/ubuntu/kb/node/bin/node"]}]

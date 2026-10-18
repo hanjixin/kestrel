@@ -1,0 +1,47 @@
+[
+  {
+    "name": "baseline",
+    "cmd": [
+      "./kestrel-baseline"
+    ]
+  },
+  {
+    "name": "epoll",
+    "cmd": [
+      "./kestrel-baseline"
+    ],
+    "env": {
+      "KESTREL_URING": "0"
+    }
+  },
+  {
+    "name": "uring",
+    "cmd": [
+      "./kestrel-baseline"
+    ],
+    "env": {
+      "KESTREL_URING": "1"
+    }
+  },
+  {
+    "name": "young8",
+    "cmd": [
+      "./kestrel-baseline"
+    ],
+    "env": {
+      "KESTREL_YOUNG_MB": "8"
+    }
+  },
+  {
+    "name": "bun",
+    "cmd": [
+      "/home/ubuntu/kb/bun/bun"
+    ]
+  },
+  {
+    "name": "node",
+    "cmd": [
+      "/home/ubuntu/kb/node/bin/node"
+    ]
+  }
+]

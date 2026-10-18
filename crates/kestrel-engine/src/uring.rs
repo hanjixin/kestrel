@@ -198,15 +198,11 @@ pub fn start() -> bool {
     true
 }
 
-/// Whether a new connection on a loop already holding `held` connections should go to
-/// io_uring (see `fastpath::register_accepted`).
-pub fn wants(held: usize) -> bool {
-    static MODE: std::sync::OnceLock<u8> = std::sync::OnceLock::new();
-    match MODE.get_or_init(|| match std::env::var("KESTREL_URING").ok().as_deref() { Some("1") => 1, Some(_) => 0, None => 2 }) {
-        1 => true,
-        0 => false,
-        _ => (16..528).contains(&held),
-    }
+/// io_uring is opt-in: avoiding mixed backends reduced 64-connection tail latency
+/// on the Linux 5.15 host. Throughput and high-concurrency results vary by workload.
+pub fn wants() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var("KESTREL_URING").is_ok_and(|v| v == "1"))
 }
 
 /// Register a connection on this thread's io_uring loop and submit its first `recv` now.

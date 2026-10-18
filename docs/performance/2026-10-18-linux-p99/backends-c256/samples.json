@@ -1,0 +1,170 @@
+[
+  {
+    "variant": "baseline",
+    "round": 1,
+    "rps": 76701.82,
+    "p50_ms": 3.51,
+    "p99_ms": 4.46,
+    "scheduler_delta": {
+      "se.nr_migrations": 14.0,
+      "nr_switches": 643.0,
+      "nr_voluntary_switches": 472.0,
+      "nr_involuntary_switches": 171.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:54599/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.29ms    0.94ms   6.77ms   83.26%\n    Req/Sec    38.95k     2.27k   57.80k    92.46%\n  Latency Distribution\n     50%    3.51ms\n     75%    3.55ms\n     90%    4.08ms\n     99%    4.46ms\n  771263 requests in 10.06s, 94.88MB read\nRequests/sec:  76701.82\nTransfer/sec:      9.44MB\n"
+  },
+  {
+    "variant": "epoll",
+    "round": 1,
+    "rps": 74637.38,
+    "p50_ms": 3.35,
+    "p99_ms": 5.68,
+    "scheduler_delta": {
+      "se.nr_migrations": 11.0,
+      "nr_switches": 370.0,
+      "nr_voluntary_switches": 206.0,
+      "nr_involuntary_switches": 164.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:43597/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.37ms  385.86us   9.43ms   94.04%\n    Req/Sec    37.75k     1.93k   50.99k    88.00%\n  Latency Distribution\n     50%    3.35ms\n     75%    3.40ms\n     90%    3.49ms\n     99%    5.68ms\n  751194 requests in 10.06s, 92.41MB read\nRequests/sec:  74637.38\nTransfer/sec:      9.18MB\n"
+  },
+  {
+    "variant": "uring",
+    "round": 1,
+    "rps": 76544.76,
+    "p50_ms": 3.3,
+    "p99_ms": 3.54,
+    "scheduler_delta": {
+      "se.nr_migrations": 1.0,
+      "nr_switches": 452.0,
+      "nr_voluntary_switches": 296.0,
+      "nr_involuntary_switches": 156.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:50783/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.31ms  132.26us  14.91ms   96.65%\n    Req/Sec    38.74k   757.81    44.07k    92.50%\n  Latency Distribution\n     50%    3.30ms\n     75%    3.34ms\n     90%    3.36ms\n     99%    3.54ms\n  770907 requests in 10.07s, 94.84MB read\nRequests/sec:  76544.76\nTransfer/sec:      9.42MB\n"
+  },
+  {
+    "variant": "epoll",
+    "round": 2,
+    "rps": 72452.04,
+    "p50_ms": 3.45,
+    "p99_ms": 6.8,
+    "scheduler_delta": {
+      "se.nr_migrations": 1.0,
+      "nr_switches": 494.0,
+      "nr_voluntary_switches": 326.0,
+      "nr_involuntary_switches": 168.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:50353/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.50ms  409.36us   9.66ms   97.80%\n    Req/Sec    36.69k   764.80    42.26k    82.50%\n  Latency Distribution\n     50%    3.45ms\n     75%    3.49ms\n     90%    3.52ms\n     99%    6.80ms\n  730095 requests in 10.08s, 89.82MB read\nRequests/sec:  72452.04\nTransfer/sec:      8.91MB\n"
+  },
+  {
+    "variant": "uring",
+    "round": 2,
+    "rps": 73725.38,
+    "p50_ms": 3.34,
+    "p99_ms": 4.05,
+    "scheduler_delta": {
+      "se.nr_migrations": 7.0,
+      "nr_switches": 555.0,
+      "nr_voluntary_switches": 383.0,
+      "nr_involuntary_switches": 172.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:38273/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.43ms  278.33us   9.55ms   82.15%\n    Req/Sec    37.40k     2.53k   51.59k    79.90%\n  Latency Distribution\n     50%    3.34ms\n     75%    3.39ms\n     90%    3.92ms\n     99%    4.05ms\n  741035 requests in 10.05s, 91.17MB read\nRequests/sec:  73725.38\nTransfer/sec:      9.07MB\n"
+  },
+  {
+    "variant": "baseline",
+    "round": 2,
+    "rps": 75657.18,
+    "p50_ms": 3.45,
+    "p99_ms": 4.61,
+    "scheduler_delta": {
+      "se.nr_migrations": 7.0,
+      "nr_switches": 641.0,
+      "nr_voluntary_switches": 445.0,
+      "nr_involuntary_switches": 196.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:57901/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.34ms  827.20us   7.66ms   91.29%\n    Req/Sec    38.25k     2.78k   42.06k    66.00%\n  Latency Distribution\n     50%    3.45ms\n     75%    3.51ms\n     90%    3.96ms\n     99%    4.61ms\n  761270 requests in 10.06s, 93.65MB read\nRequests/sec:  75657.18\nTransfer/sec:      9.31MB\n"
+  },
+  {
+    "variant": "uring",
+    "round": 3,
+    "rps": 78527.55,
+    "p50_ms": 3.24,
+    "p99_ms": 3.46,
+    "scheduler_delta": {
+      "se.nr_migrations": 2.0,
+      "nr_switches": 510.0,
+      "nr_voluntary_switches": 341.0,
+      "nr_involuntary_switches": 169.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:33991/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.22ms  166.41us  15.26ms   89.61%\n    Req/Sec    39.77k     1.44k   45.52k    89.50%\n  Latency Distribution\n     50%    3.24ms\n     75%    3.27ms\n     90%    3.30ms\n     99%    3.46ms\n  791559 requests in 10.08s, 97.38MB read\nRequests/sec:  78527.55\nTransfer/sec:      9.66MB\n"
+  },
+  {
+    "variant": "baseline",
+    "round": 3,
+    "rps": 75469.01,
+    "p50_ms": 3.52,
+    "p99_ms": 4.53,
+    "scheduler_delta": {
+      "se.nr_migrations": 2.0,
+      "nr_switches": 416.0,
+      "nr_voluntary_switches": 261.0,
+      "nr_involuntary_switches": 155.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:49791/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.35ms    0.96ms   6.71ms   86.45%\n    Req/Sec    38.27k     2.27k   47.20k    75.00%\n  Latency Distribution\n     50%    3.52ms\n     75%    3.61ms\n     90%    4.24ms\n     99%    4.53ms\n  762008 requests in 10.10s, 93.75MB read\nRequests/sec:  75469.01\nTransfer/sec:      9.28MB\n"
+  },
+  {
+    "variant": "epoll",
+    "round": 3,
+    "rps": 71112.57,
+    "p50_ms": 3.51,
+    "p99_ms": 6.19,
+    "scheduler_delta": {
+      "se.nr_migrations": 1.0,
+      "nr_switches": 511.0,
+      "nr_voluntary_switches": 298.0,
+      "nr_involuntary_switches": 213.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:44567/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.53ms  371.92us   8.79ms   96.59%\n    Req/Sec    36.03k     1.32k   43.15k    87.50%\n  Latency Distribution\n     50%    3.51ms\n     75%    3.57ms\n     90%    3.62ms\n     99%    6.19ms\n  717192 requests in 10.09s, 88.23MB read\nRequests/sec:  71112.57\nTransfer/sec:      8.75MB\n"
+  },
+  {
+    "variant": "uring",
+    "round": 4,
+    "rps": 69972.24,
+    "p50_ms": 3.63,
+    "p99_ms": 4.52,
+    "scheduler_delta": {
+      "se.nr_migrations": 1.0,
+      "nr_switches": 524.0,
+      "nr_voluntary_switches": 370.0,
+      "nr_involuntary_switches": 154.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:58719/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.62ms  374.23us   5.56ms   73.23%\n    Req/Sec    35.41k     3.26k   51.38k    68.00%\n  Latency Distribution\n     50%    3.63ms\n     75%    3.71ms\n     90%    4.24ms\n     99%    4.52ms\n  704885 requests in 10.07s, 86.72MB read\nRequests/sec:  69972.24\nTransfer/sec:      8.61MB\n"
+  },
+  {
+    "variant": "epoll",
+    "round": 4,
+    "rps": 73934.34,
+    "p50_ms": 3.3,
+    "p99_ms": 6.17,
+    "scheduler_delta": {
+      "se.nr_migrations": 96.0,
+      "nr_switches": 810.0,
+      "nr_voluntary_switches": 534.0,
+      "nr_involuntary_switches": 276.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:33485/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.40ms  679.40us  10.75ms   93.95%\n    Req/Sec    37.51k     3.41k   55.79k    65.33%\n  Latency Distribution\n     50%    3.30ms\n     75%    3.75ms\n     90%    3.93ms\n     99%    6.17ms\n  742503 requests in 10.04s, 91.35MB read\nRequests/sec:  73934.34\nTransfer/sec:      9.10MB\n"
+  },
+  {
+    "variant": "baseline",
+    "round": 4,
+    "rps": 75119.03,
+    "p50_ms": 3.52,
+    "p99_ms": 4.34,
+    "scheduler_delta": {
+      "se.nr_migrations": 1.0,
+      "nr_switches": 545.0,
+      "nr_voluntary_switches": 398.0,
+      "nr_involuntary_switches": 147.0
+    },
+    "raw": "Running 10s test @ http://127.0.0.1:55329/\n  2 threads and 256 connections\n  Thread Stats   Avg      Stdev     Max   +/- Stdev\n    Latency     3.36ms    0.89ms  13.99ms   85.84%\n    Req/Sec    38.09k     1.12k   49.59k    94.00%\n  Latency Distribution\n     50%    3.52ms\n     75%    3.56ms\n     90%    4.20ms\n     99%    4.34ms\n  758264 requests in 10.09s, 93.28MB read\nRequests/sec:  75119.03\nTransfer/sec:      9.24MB\n"
+  }
+]

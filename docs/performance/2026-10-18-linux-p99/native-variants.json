@@ -1,0 +1,1 @@
+[{"name": "baseline", "cmd": ["./kestrel-baseline"], "fixture": "bench/hello_kestrel.ts"}, {"name": "epoll", "cmd": ["./kestrel-baseline"], "env": {"KESTREL_URING": "0"}, "fixture": "bench/hello_kestrel.ts"}, {"name": "bun", "cmd": ["/home/ubuntu/kb/bun/bun"], "fixture": "bench/hello_bun.ts"}]

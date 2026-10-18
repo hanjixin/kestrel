@@ -22,7 +22,7 @@ KESTREL_REQUIRE_LOG=1 ...                                          # trace requi
 KESTREL_YOUNG_MB=32 ...                                            # young-generation semi-space per isolate (default 32 main / 8 workers)
 KESTREL_V8_FLAGS="..." ...                                         # extra raw V8 flags
 KESTREL_FASTPATH=0 ...                                             # serve everything through hyper (no level-triggered fast loop)
-KESTREL_URING=1|0 ...                                              # Linux: force io_uring or epoll (default: selected per connection count)
+KESTREL_URING=1|0 ...                                              # Linux: opt into io_uring or force epoll (default: epoll)
 KESTREL_PACK=16 ...                                                # connections packed per worker before the acceptor spreads (0 = least-loaded only)
 KESTREL_BATCH_IO=1 ...                                             # Linux: epoll readiness + batched io_uring reads/writes per wake-up (no gain on 5.15 kernels)
 ./target/release/kestrel --inspect[=[host:]port] app.js            # DevTools endpoint (chrome://inspect, VS Code); --inspect-brk pauses on the first line
@@ -32,7 +32,7 @@ A Linux build is produced in Docker with the `rust:bullseye` image (glibc 2.31, 
 
 ## Compatibility status
 
-The default differential gate passes **42/42 cases on macOS**, including process events, Web Crypto globals, BYOB streams, VM sandbox properties and runtime/AOT initialization regressions. The previous 34-case gate also passed on Linux; the eight new cases have not yet been rerun there. Each case must exit successfully under both Node and Kestrel with identical stdout. The latest Linux run also validates io_uring, batched I/O and Hyper-only HTTP modes, including real-socket backpressure.
+The default differential gate passes **42/42 cases on both macOS and Linux**, including process events, Web Crypto globals, BYOB streams, VM sandbox properties and runtime/AOT initialization regressions. Linux also passes three extra VM/native-addon/native-HTTP cases; the launcher enables experimental type stripping for TypeScript fixtures on Node 22. Each case must exit successfully under both Node and Kestrel with identical stdout. The latest Linux run also validates io_uring, batched I/O and Hyper-only HTTP modes, including real-socket backpressure.
 
 Coverage in `test/compat` includes:
 
@@ -70,6 +70,21 @@ Coverage in `test/compat` includes:
 - Scheduling order of `process.nextTick`, microtasks, `setImmediate` and timers matches Node.
 
 Builtins: assert, async_hooks (`AsyncLocalStorage`, `AsyncResource`; `createHook` is a no-op), buffer, child_process (incl. `fork` IPC), cluster (processes sharing a port via `SO_REUSEPORT`), constants, crypto (hashes, HMAC, KDFs, AES/ChaCha ciphers, RSA/ECDSA sign/verify and key pairs, webcrypto subset), dgram (+multicast), dns, events, fs (+promises, fd API, streams, `watch`/`watchFile`), http, http2 (servers over TLS/ALPN and h2c, client, stream and compatibility APIs, server push, ping, flow control; over the `h2` crate), https, inspector (in-process CDP sessions and the external endpoint: `--inspect`, `--inspect-brk`, `inspector.open()`/`url()`/`close()`/`waitForDebugger()`), module, net (TCP + Unix sockets), os, path, perf_hooks, process, querystring, readline, stream, string_decoder, sys, timers, tls (client and server), tty, url, util, v8 (heap statistics, serialize), vm (scripts in this or a fresh context, `SourceTextModule`, `SyntheticModule`, `importModuleDynamically` as a callback or `USE_MAIN_CONTEXT_DEFAULT_LOADER`, `initializeImportMeta`), worker_threads, zlib (+brotli). Native addons: Node-API (N-API) modules load through `require()`/`process.dlopen` (the `napi_*` and `uv_*` symbols are exported from the binary, `process.versions.napi` is 10); the implementation is `crates/kestrel-napi`, a vendored copy of deno_napi 0.190.0 (MIT) matching the embedded deno_core, minus Deno's permission and embedded-loader hooks. Addons built against the legacy V8/`nan` API (for example better-sqlite3) are not supported, as in Deno and Bun.
+
+## Linux p99 follow-up — after v0.0.1
+
+The Linux fast path now defaults to epoll; `KESTREL_URING=1` retains the io_uring option. Six rounds of 10-second, single-worker Node HTTP tests on the same EPYC/Linux 5.15 host gave:
+
+| Connections | Kestrel before p99 | Kestrel now p99 | Bun p99 | Native Node p99 | Kestrel now req/s |
+|---|---:|---:|---:|---:|---:|
+| 64 | 2.515 ms | **1.635 ms** | 2.365 ms | 3.065 ms | 58,855 |
+| 256 | 6.410 ms | **5.800 ms** | 8.790 ms | 10.515 ms | 59,600 |
+
+These p99 values are medians of per-round percentiles. Kestrel's p99 falls 35.0% / 9.5% versus the previous default and 30.9% / 34.0% versus Bun. Throughput is 13.5% / 11.3% above Bun, but 5.8% / 5.4% below the previous default in this run. A shorter confirmation instead showed a throughput increase. Two additional 256-connection checks regressed epoll p99, so its high-concurrency benefit is not consistent; explicit `KESTREL_URING=1` performed better in the backend comparison (3.795 ms versus the original 4.495 ms). The clearest default improvement is at 64 connections. [Raw results, rejected experiments and methodology](docs/performance/2026-10-18-linux-p99/README.md). This source change is **not included in v0.0.1**.
+
+At 4096 connections, a separate three-round check gives **102.15 → 65.50 ms p99** (−35.9%) and **64,206 → 65,957 req/s** (+2.7%) for the default change. Pure io_uring instead measured 111.39 ms / 50,711 req/s, so it remains opt-in.
+
+For latency-sensitive Linux deployments, test `KESTREL_URING=1 ./kestrel app.ts` against the default on your workload. A separate three-round 64-connection comparison measured Node HTTP p99 at **1.120 ms** with io_uring, versus 2.510 ms before and 2.210 ms in Bun; throughput was 65,830 / 61,490 / 59,579 req/s respectively. For native HTTP, io_uring reached 0.990 ms p99 versus epoll's 1.380 ms, but delivered 80,012 versus 89,595 req/s. It is an explicit tradeoff, not a universal winner.
 
 ## Latest measured performance — 2026-10-18
 
@@ -164,7 +179,7 @@ Servers and `wrk` on the same host over loopback (the inter-node link of the tes
 | kestrel, 128 worker threads, evenly spread (old default) | 413–416 k | 1.20–1.23 M |
 | kestrel raw hyper, no JS, 128 threads | 440 k | 1.39–1.40 M |
 
-The fast loop has two Linux backends and places each accepted connection on one of them by how many the worker already holds: the first 16 go to the level-triggered epoll loop (one ready `read` per request is cheapest when a loop holds a handful), the next 512 to io_uring (recv/send submitted in batches with a bounded submit-and-wait: +4–5 % when loops hold tens to hundreds), and anything beyond back to epoll (one loop holding thousands loses 17 % on io_uring, because on this 5.15 kernel without multishot receive every re-armed `recv` goes through the poll-arm and task-work path). Between its busy turns the io_uring loop also serves the worker's epoll connections, so the two never starve each other. `KESTREL_URING=1|0` forces a single backend.
+The historical configuration above selected between two Linux backends by how many connections the worker already held: the first 16 go to the level-triggered epoll loop (one ready `read` per request is cheapest when a loop holds a handful), the next 512 to io_uring (recv/send submitted in batches with a bounded submit-and-wait: +4–5 % when loops hold tens to hundreds), and anything beyond back to epoll (one loop holding thousands loses 17 % on io_uring, because on this 5.15 kernel without multishot receive every re-armed `recv` goes through the poll-arm and task-work path). Between its busy turns the io_uring loop also serves the worker's epoll connections, so the two never starve each other. The current default uses epoll for all fast-loop connections; `KESTREL_URING=1` opts into io_uring. See the [2026-10-18 tail-latency investigation](docs/performance/2026-10-18-linux-p99/README.md) for the new measurements and limitations.
 
 The host runs the load generator too (32 `wrk` threads on 128 vCPUs, 2 sockets, 8 NUMA nodes), so one server thread or process per vCPU is past the knee for both runtimes (`bench/remote/sweep2.sh`). Two defaults follow from that: `"auto"` means physical cores, and the acceptor packs connections onto as few workers as needed (up to 16 each, `KESTREL_PACK`) before spreading, so a few hundred mostly idle keep-alive connections do not wake 64 threads.
 

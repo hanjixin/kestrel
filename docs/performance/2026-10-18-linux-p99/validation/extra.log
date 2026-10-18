@@ -1,0 +1,4 @@
+PASS vmmod.mjs exits=[0, 0]
+PASS napi_real.cjs exits=[0, 0]
+PASS serve.ts exits=[0]
+3/3 passed

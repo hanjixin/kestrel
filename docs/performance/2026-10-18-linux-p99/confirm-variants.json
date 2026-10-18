@@ -1,0 +1,35 @@
+[
+  {
+    "name": "baseline",
+    "cmd": [
+      "./kestrel-baseline"
+    ]
+  },
+  {
+    "name": "shortwait",
+    "cmd": [
+      "./kestrel-shortwait"
+    ]
+  },
+  {
+    "name": "epoll",
+    "cmd": [
+      "./kestrel-baseline"
+    ],
+    "env": {
+      "KESTREL_URING": "0"
+    }
+  },
+  {
+    "name": "bun",
+    "cmd": [
+      "/home/ubuntu/kb/bun/bun"
+    ]
+  },
+  {
+    "name": "node",
+    "cmd": [
+      "/home/ubuntu/kb/node/bin/node"
+    ]
+  }
+]

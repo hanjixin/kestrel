@@ -57,6 +57,9 @@ def main():
             failures += 1
             continue
         commands = [[runtime, case] for runtime in runtimes]
+        if case.endswith('.ts'):
+            # Node 22 supports type stripping, but does not enable it by default.
+            commands[0].insert(1, '--experimental-strip-types')
         if case == 'vmmod.mjs':
             commands[0].insert(1, '--experimental-vm-modules')
         if case == 'inspect.mjs':

@@ -1,0 +1,14 @@
+{
+  "baseline_local_commit": "b8a1d6c",
+  "release_public_commit": "bb4d551a42953c8aa3384249471d8c2707d5adf7",
+  "release_tag": "v0.0.1",
+  "release_url": "https://github.com/hanjixin/kestrel/releases/tag/v0.0.1",
+  "candidate_change": "Default Linux fast path to epoll; preserve KESTREL_URING=1 opt-in",
+  "compiler_container": "rust:bullseye linux/amd64",
+  "worker_count": 1,
+  "cpu_affinity": "unrestricted",
+  "load_generator": "wrk -t2, loopback, same host",
+  "warmup_seconds": 1,
+  "aggregate": "median across rounds; p99 is median of per-round wrk p99, not pooled",
+  "notes": "Shared host. Diagnostic runs have 3 or 6 rounds of 5s; final-c64 and final-c256 have 6 rounds of 10s. See README for caveats."
+}

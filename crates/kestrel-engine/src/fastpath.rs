@@ -110,16 +110,11 @@ fn try_recv_any() -> Option<Accepted> {
 
 fn register_accepted((rid, stream, live): Accepted) {
     flog(|| format!("register rid={rid}"));
-    // Backend per connection, by how many this worker already holds (the acceptor packs
-    // connections, so this is the loop's density): a loop with a handful of connections is
-    // cheapest on level-triggered epoll (one ready `read` per request); with tens to a few
-    // hundred, batching recv/send in io_uring wins 4-5 %; with thousands on one loop,
-    // io_uring's per-recv poll-arm costs 17 % (kernel 5.15, no multishot receive).
-    // `KESTREL_URING=1|0` forces one backend for every connection.
+    // Use epoll by default for predictable tail latency. io_uring remains an
+    // explicit option and falls back to epoll if initialization is unavailable.
     #[cfg(target_os = "linux")]
     {
-        let held = live.load(std::sync::atomic::Ordering::Relaxed).saturating_sub(1);
-        if crate::uring::wants(held) && crate::uring::start() {
+        if crate::uring::wants() && crate::uring::start() {
             crate::uring::register_direct(rid, stream, live);
             return;
         }
