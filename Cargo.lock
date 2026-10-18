@@ -1784,7 +1784,7 @@ dependencies = [
 
 [[package]]
 name = "kestrel-aot"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "cranelift-codegen",
@@ -1803,7 +1803,7 @@ dependencies = [
 
 [[package]]
 name = "kestrel-cli"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "anyhow",
  "kestrel-aot",
@@ -1814,7 +1814,7 @@ dependencies = [
 
 [[package]]
 name = "kestrel-engine"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "aes",
  "aes-gcm",
