@@ -1,0 +1,7 @@
+{
+  "package": "web-streams-polyfill",
+  "version": "4.3.0",
+  "sha256": "62e42e4f311453490174696029accb5aca6103d46873b26ba83c3b8c5ea418a0",
+  "license": "MIT",
+  "source": "https://github.com/MattiasBuelens/web-streams-polyfill"
+}

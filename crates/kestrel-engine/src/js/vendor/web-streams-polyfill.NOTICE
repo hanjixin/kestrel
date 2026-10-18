@@ -1,0 +1,7 @@
+web-streams-polyfill 4.3.0
+Source: https://github.com/MattiasBuelens/web-streams-polyfill/tree/v4.3.0
+Artifact: https://registry.npmjs.org/web-streams-polyfill/-/web-streams-polyfill-4.3.0.tgz
+Integrity: sha512-/Gnggvj9oSrEvJbDyyPtAnxBt5fGQM2iWOKQNu7ie1OxDgK40iZpyV3TKaRiEzVj1oA1UxKnEy9XPXh6PW3eVw==
+Vendored file: dist/ponyfill.mjs (unchanged)
+SHA256: 62e42e4f311453490174696029accb5aca6103d46873b26ba83c3b8c5ea418a0
+License: MIT (see web-streams-polyfill.LICENSE)

@@ -1,0 +1,11 @@
+Error: Attempt to export a nullable value for "ReadableStreamBYOBReader"
+    at defineProperties (/private/tmp/kestrel-reportify-build-20261018/app/node_modules/next/dist/compiled/edge-runtime/index.js:1:513756)
+    at addPrimitives (/private/tmp/kestrel-reportify-build-20261018/app/node_modules/next/dist/compiled/edge-runtime/index.js:1:512501)
+    at Object.extend (/private/tmp/kestrel-reportify-build-20261018/app/node_modules/next/dist/compiled/edge-runtime/index.js:1:506959)
+    at new VM (/private/tmp/kestrel-reportify-build-20261018/app/node_modules/next/dist/compiled/edge-runtime/index.js:1:514625)
+    at new EdgeVM (/private/tmp/kestrel-reportify-build-20261018/app/node_modules/next/dist/compiled/edge-runtime/index.js:1:506871)
+    at Object.<anonymous> (/private/tmp/kestrel-reportify-build-20261018/app/edge-probe.cjs:2:15)
+    at compileAndRun (ext:kestrel/node/module.js:117:6)
+    at loadInto (ext:kestrel/node/module.js:103:3)
+    at loadFile (ext:kestrel/node/module.js:86:9)
+    at globalThis.<computed> (ext:kestrel/node/module.js:121:59)

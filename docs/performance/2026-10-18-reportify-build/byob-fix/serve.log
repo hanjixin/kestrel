@@ -1,0 +1,13 @@
+▲ Next.js 16.1.2
+- Local:         http://127.0.0.1:56898
+- Network:       http://127.0.0.1:56898
+
+✓ Starting...
+SERVICE_ENV production
+⚠ `eslint` configuration in next.config.js is no longer supported. See more info here: https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
+⚠ `images.domains` is deprecated in favor of `images.remotePatterns`. Please update next.config.js to protect your application from malicious users.
+⚠ Invalid next.config.js options detected: 
+⚠     Unrecognized key(s) in object: 'swcMinify' at "experimental"
+⚠     Unrecognized key(s) in object: 'eslint', 'publicRuntimeConfig'
+⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+✓ Ready in 878ms

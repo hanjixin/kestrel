@@ -65,6 +65,12 @@ impl ModuleLoader for KestrelModuleLoader {
 }
 
 fn load_inner(spec: &ModuleSpecifier, options: ModuleLoadOptions) -> Result<ModuleSource, ModuleLoaderError> {
+    // Evaluate the bridge in its own scope so user bindings such as Symbol or
+    // globalThis cannot shadow AOT initialization.
+    if spec.as_str() == "kestrel:aot" {
+        let code = String::from("export default globalThis[Symbol.for(\"kestrel.aot.ops\")];");
+        return Ok(ModuleSource::new(ModuleType::JavaScript, ModuleSourceCode::String(code.into()), spec, None));
+    }
     if spec.scheme() == "node" {
         let name = spec.path();
         let ext = resolve::builtin_url(name);

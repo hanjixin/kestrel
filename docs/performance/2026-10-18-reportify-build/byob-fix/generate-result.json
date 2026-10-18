@@ -1,0 +1,18 @@
+[
+  {
+    "runtime": "kestrel",
+    "round": 1,
+    "exit": 0,
+    "timeout": false,
+    "build_ok": true,
+    "seconds": 14.323,
+    "peak_group_rss_mib": 1817.64,
+    "smoke": {
+      "ok": true,
+      "response": {
+        "code": 0,
+        "message": "success"
+      }
+    }
+  }
+]

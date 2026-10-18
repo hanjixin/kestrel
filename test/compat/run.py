@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 HERE = Path(__file__).resolve().parent
-DEFAULTS = '''http_end_strings.mjs http_early_body_read.mjs http_request_metadata.mjs worker_clone.mjs fork_advanced.mjs fs_async.mjs fs_handles.mjs http_streaming.mjs http_stream_lifecycle.mjs http_end_buffer.mjs builtin_subpaths.mjs server_close.mjs server_close_active.mjs
+DEFAULTS = '''aot_shadowed_globals.ts runtime_detection.mjs vm_non_enumerable.mjs web_streams_byob.mjs web_streams_pipeline.mjs webcrypto_globals.mjs process_events.mjs process_events_ipc.mjs http_end_strings.mjs http_early_body_read.mjs http_request_metadata.mjs worker_clone.mjs fork_advanced.mjs fs_async.mjs fs_handles.mjs http_streaming.mjs http_stream_lifecycle.mjs http_end_buffer.mjs builtin_subpaths.mjs server_close.mjs server_close_active.mjs
 server_close_idle.mjs http2.mjs http2_stress.mjs http.mjs
 http_implicit_headers.mjs http_async_close.mjs https.mjs net.mjs unix.mjs
 fork.mjs fork_disconnect.mjs worker.mjs fs_streams.mjs esm.mjs npm.mjs

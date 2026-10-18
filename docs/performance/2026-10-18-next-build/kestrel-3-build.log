@@ -1,0 +1,44 @@
+⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+   ▲ Next.js 15.5.28
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 1923ms
+   Linting and checking validity of types ...
+   Collecting page data ...
+   Generating static pages (0/4) ...
+   Generating static pages (1/4) 
+   Generating static pages (2/4) 
+   Generating static pages (3/4) 
+ ✓ Generating static pages (4/4)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                      128 B         103 kB
+└ ○ /_not-found                            997 B         104 kB
++ First Load JS shared by all             103 kB
+  ├ chunks/255-b1e2483a7e02feee.js       46.6 kB
+  ├ chunks/4bd1b696-c023c6e3521b1417.js  54.3 kB
+  └ other shared chunks (total)          1.87 kB
+
+
+○  (Static)  prerendered as static content
+
+        8.60 real        10.40 user         2.55 sys
+           607797248  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              144364  page reclaims
+                 124  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                 135  messages sent
+                  88  messages received
+                  21  signals received
+                2192  voluntary context switches
+              242995  involuntary context switches
+        108152787995  instructions retired
+         33385903855  cycles elapsed
+           581100584  peak memory footprint

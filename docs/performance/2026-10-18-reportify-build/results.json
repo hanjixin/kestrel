@@ -1,0 +1,41 @@
+[
+  {
+    "runtime": "node",
+    "round": 1,
+    "exit": -6,
+    "timeout": false,
+    "build_ok": false,
+    "seconds": 247.58,
+    "peak_group_rss_mib": 3567.03,
+    "observed_commands": [
+      "/opt/homebrew/bin/node node_modules/next/dist/bin/next build --webpack",
+      "/usr/bin/time -l /opt/homebrew/bin/node node_modules/next/dist/bin/next build --webpack"
+    ]
+  },
+  {
+    "runtime": "bun",
+    "round": 1,
+    "exit": -15,
+    "timeout": false,
+    "build_ok": false,
+    "seconds": 564.67,
+    "peak_group_rss_mib": 5029.06,
+    "observed_commands": [
+      "/Users/hanjixin/.bun/bin/bun --bun node_modules/next/dist/bin/next build --webpack",
+      "/usr/bin/time -l /Users/hanjixin/.bun/bin/bun --bun node_modules/next/dist/bin/next build --webpack"
+    ]
+  },
+  {
+    "runtime": "kestrel",
+    "round": 1,
+    "exit": 1,
+    "timeout": false,
+    "build_ok": false,
+    "seconds": 0.614,
+    "peak_group_rss_mib": 28.45,
+    "observed_commands": [
+      "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel node_modules/next/dist/bin/next build --webpack",
+      "/usr/bin/time -l /Users/hanjixin/Desktop/code/kestrel/target/release/kestrel node_modules/next/dist/bin/next build --webpack"
+    ]
+  }
+]

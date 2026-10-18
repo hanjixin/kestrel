@@ -10,19 +10,6 @@ How it gets both:
 
 The name is a placeholder.
 
-## Install
-
-Prebuilt binaries are attached to every [release](https://github.com/hanjixin/kestrel/releases): Linux x86_64 and aarch64 (glibc 2.31+, so Ubuntu 20.04+ / Debian 11+), macOS Apple Silicon and Intel.
-
-```sh
-# pick one of: x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu, aarch64-apple-darwin, x86_64-apple-darwin
-TARGET=aarch64-apple-darwin
-curl -L https://github.com/hanjixin/kestrel/releases/latest/download/kestrel-$TARGET.tar.gz | tar xz
-./kestrel-$TARGET/kestrel app.ts
-```
-
-Each archive ships with a `.sha256` file next to it. Releases are built by `.github/workflows/release.yml` whenever a `v*` tag is pushed.
-
 ## Build and run
 
 ```sh
@@ -45,12 +32,14 @@ A Linux build is produced in Docker with the `rust:bullseye` image (glibc 2.31, 
 
 ## Compatibility status
 
-The default differential gate passes **34/34 cases on macOS and Linux**. Each case must exit successfully under both Node and Kestrel with identical stdout. The latest Linux run also validates io_uring, batched I/O and Hyper-only HTTP modes, including real-socket backpressure.
+The default differential gate passes **42/42 cases on macOS**, including process events, Web Crypto globals, BYOB streams, VM sandbox properties and runtime/AOT initialization regressions. The previous 34-case gate also passed on Linux; the eight new cases have not yet been rerun there. Each case must exit successfully under both Node and Kestrel with identical stdout. The latest Linux run also validates io_uring, batched I/O and Hyper-only HTTP modes, including real-socket backpressure.
 
 Coverage in `test/compat` includes:
 
 - `http_end_strings.mjs`, `http_end_buffer.mjs`: response encodings, Unicode, streamed strings, end callbacks, invalid-encoding recovery and mutable-buffer ownership.
 - `http_request_metadata.mjs`, `http_early_body_read.mjs`: original request targets, duplicate headers and request-body handoff.
+- `webcrypto_globals.mjs`: Web Crypto global constructor identity, illegal construction and AES-GCM round trips.
+- `process_events.mjs`, `process_events_ipc.mjs`: process EventEmitter semantics, raw/once listener identity, reentrant dispatch, listener validation and prepended once-only IPC delivery. This fixes the missing `process.prependOnceListener` that prevented Next 16 build initialization.
 - `worker_clone.mjs`, `fork_advanced.mjs`: structured clone, transferable ArrayBuffers and advanced child-process IPC.
 - `fs_async.mjs`, `fs_handles.mjs`, `builtin_subpaths.mjs`: asynchronous filesystem progress, file handles and builtin subpath imports.
 
@@ -217,6 +206,13 @@ only when it sends a streaming response. Transferable Worker ArrayBuffers move
 backing-store ownership without copying their contents.
 
 This remains a compatibility implementation, not a complete Node replacement.
+Web Streams include BYOB readers, byte controllers, buffer transfer and pipeline
+backpressure through the vendored MIT-licensed web-streams-polyfill 4.3.0. Next 16
+Edge Runtime initialization and a complete reportify-fe `next build --webpack`
+run now pass, including 99/99 generated pages and a production health check.
+The validation reused build caches with a 6 GB heap and two page workers; it is
+not a fresh three-runtime performance comparison. See the
+[reportify-fe validation notes](docs/performance/2026-10-18-reportify-build/README.md).
 HTTP clients and request bodies still buffer complete bodies. Worker `eval`,
 transferring MessagePorts, BroadcastChannel, fs promises watch/glob and some
 less common filesystem options remain incomplete. Advanced IPC uses the embedded

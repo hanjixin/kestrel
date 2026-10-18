@@ -1,0 +1,25 @@
+unhandledRejection TypeError: Cannot read properties of undefined (reading 'name')
+    at compileAndRun (ext:kestrel/node/module.js:117:6)
+    at loadInto (ext:kestrel/node/module.js:103:3)
+    at loadFile (ext:kestrel/node/module.js:86:9)
+    at require (ext:kestrel/node/module.js:65:12)
+    at compileAndRun (ext:kestrel/node/module.js:117:6)
+    at loadInto (ext:kestrel/node/module.js:103:3)
+        0.59 real         0.06 user         0.05 sys
+            53870592  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+                2480  page reclaims
+                1071  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+                 571  voluntary context switches
+                1072  involuntary context switches
+          1013237262  instructions retired
+           440518466  cycles elapsed
+            35622464  peak memory footprint

@@ -1,0 +1,3 @@
+(kestrel:74510) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 unhandledRejection listeners added to Object. Use emitter.setMaxListeners() to increase limit
+(kestrel:74510) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 uncaughtException listeners added to Object. Use emitter.setMaxListeners() to increase limit
+["function","function","function",true,true]

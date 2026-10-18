@@ -1,0 +1,23 @@
+{
+  "node": {
+    "builds_passed": 3,
+    "builds_attempted": 3,
+    "smoke_passed": 3,
+    "median_build_seconds": 9.708,
+    "median_sampled_peak_rss_mib": 1303.81
+  },
+  "bun": {
+    "builds_passed": 3,
+    "builds_attempted": 3,
+    "smoke_passed": 3,
+    "median_build_seconds": 9.086,
+    "median_sampled_peak_rss_mib": 1398.84
+  },
+  "kestrel": {
+    "builds_passed": 3,
+    "builds_attempted": 3,
+    "smoke_passed": 3,
+    "median_build_seconds": 8.628,
+    "median_sampled_peak_rss_mib": 867.28
+  }
+}

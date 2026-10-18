@@ -148,7 +148,7 @@ export class Server extends EventEmitter {
     let port = 0, host, cb;
     for (const a of args) { if (typeof a === "function") cb = a; else if (typeof a === "number" || (typeof a === "string" && /^\d+$/.test(a))) port = Number(a); else if (typeof a === "string") host = a; else if (a && typeof a === "object") { port = a.port ?? port; host = a.host ?? host; } }
     if (cb) this.once("listening", cb);
-    const respondOps = Deno.core.ops;
+    const respondOps = ops;
     const self = this;
     try {
       const info = globalThis.Kestrel.serve({
@@ -235,7 +235,7 @@ export class ClientRequest extends OutgoingMessage {
     // end callbacks may reuse/mutate the caller's buffer before the promise is delivered.
     const body = Buffer.concat(this._chunks);
     const hasBody = body.length > 0 || !["GET", "HEAD"].includes(this.method);
-    Deno.core.ops.op_kestrel_fetch(this._url, this.method, headers, body, hasBody, false).then((r) => {
+    ops.op_kestrel_fetch(this._url, this.method, headers, body, hasBody, false).then((r) => {
       const hdrs = {}; const raw = [];
       for (const [k, v] of r.headers) { hdrs[k] = hdrs[k] === undefined ? v : (k === "set-cookie" ? [].concat(hdrs[k], v) : hdrs[k] + ", " + v); raw.push(k, v); }
       const res = new IncomingMessage({ statusCode: r.status, statusMessage: r.status_text, headers: hdrs, rawHeaders: raw, body: new Uint8Array(r.body), method: this.method, url: this.path });

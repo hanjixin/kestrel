@@ -1,0 +1,98 @@
+SERVICE_ENV production
+⚠ `eslint` configuration in next.config.js is no longer supported. See more info here: https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
+⚠ `images.domains` is deprecated in favor of `images.remotePatterns`. Please update next.config.js to protect your application from malicious users.
+⚠ Invalid next.config.js options detected: 
+⚠     Unrecognized key(s) in object: 'swcMinify' at "experimental"
+⚠     Unrecognized key(s) in object: 'eslint', 'publicRuntimeConfig'
+⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+▲ Next.js 16.1.2 (webpack)
+- Environments: .env
+- Experiments (use with caution):
+  · optimizePackageImports
+  ? swcMinify (invalid experimental key)
+
+  Creating an optimized production build ...
+Browserslist: browsers data (caniuse-lite) is 12 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+[BABEL] Note: The code generator has deoptimised the styling of /private/tmp/kestrel-reportify-build-20261018/app/node_modules/pdfjs-dist/build/pdf.js as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of /private/tmp/kestrel-reportify-build-20261018/app/node_modules/pdfjs-dist/build/pdf.js as it exceeds the max of 500KB.
+
+<--- Last few GCs --->
+
+[43055:0x95880c000]   236751 ms: Scavenge (during sweeping) 4049.1 (4103.2) -> 4049.1 (4103.2) MB, pooled: 0.0 MB, 21.63 / 0.00 ms (average mu = 0.218, current mu = 0.187) allocation failure; 
+[43055:0x95880c000]   240666 ms: Mark-Compact (reduce) 4054.8 (4109.0) -> 4042.7 (4095.2) MB, pooled: 0.0 MB, 3818.36 / 0.00 ms (+ 0.3 ms in 1 steps since start of marking, biggest step 0.3 ms, walltime since start of marking 3915 ms) (average mu = 0.235,
+FATAL ERROR: Ineffective mark-compacts near heap limit Allocation failed - JavaScript heap out of memory
+----- Native stack trace -----
+
+ 1: 0x1087c2384 node::OOMErrorHandler(char const*, v8::OOMDetails const&) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+ 2: 0x108ad5630 v8::Utils::ReportOOMFailure(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+ 3: 0x108ad55e8 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+ 4: 0x108c81874 v8::internal::Heap::ShouldOptimizeForLoadTime() const [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+ 5: 0x108c83e00 v8::internal::Heap::OldGenerationConsumedBytes() const [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+ 6: 0x108c83ca8 v8::internal::Heap::RecomputeLimits(v8::internal::GarbageCollector, v8::base::TimeTicks) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+ 7: 0x108c91748 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags, v8::internal::PerformHeapLimitCheck)::$_1::operator()() const [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+ 8: 0x108c913ec void heap::base::Stack::SetMarkerAndCallbackImpl<v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags, v8::internal::PerformHeapLimitCheck)::$_1>(heap::base::Stack*, void*, void const*) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+ 9: 0x1092a6dfc PushAllRegistersAndIterateStack [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+10: 0x108c7fff4 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags, v8::internal::PerformHeapLimitCheck) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+11: 0x108c78604 std::__1::invoke_result<v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment, v8::internal::AllocationHint)::$_0&>::type v8::internal::HeapAllocator::CollectGarbageAndRetryAllocation<v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment, v8::internal::AllocationHint)::$_0&>(v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment, v8::internal::AllocationHint)::$_0&, v8::internal::AllocationType) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+12: 0x108c77470 v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment, v8::internal::AllocationHint) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+13: 0x108c50924 v8::internal::MaybeHandle<v8::internal::SeqOneByteString> v8::internal::FactoryBase<v8::internal::Factory>::NewRawStringWithMap<v8::internal::SeqOneByteString>(int, v8::internal::Tagged<v8::internal::Map>, v8::internal::AllocationType, v8::internal::AllocationHint) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+14: 0x108c507bc v8::internal::FactoryBase<v8::internal::Factory>::NewStringFromOneByte(v8::base::Vector<unsigned char const>, v8::internal::AllocationType) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+15: 0x108d6c7cc v8::internal::JsonStringifier::Stringify(v8::internal::Handle<v8::internal::Union<v8::internal::Smi, v8::internal::HeapNumber, v8::internal::BigInt, v8::internal::String, v8::internal::Symbol, v8::internal::Boolean, v8::internal::Null, v8::internal::Undefined, v8::internal::JSReceiver>>, v8::internal::Handle<v8::internal::Union<v8::internal::Smi, v8::internal::HeapNumber, v8::internal::BigInt, v8::internal::String, v8::internal::Symbol, v8::internal::Boolean, v8::internal::Null, v8::internal::Undefined, v8::internal::JSReceiver>>, v8::internal::Handle<v8::internal::Object>) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+16: 0x108d70290 v8::internal::JsonStringify(v8::internal::Isolate*, v8::internal::Handle<v8::internal::Union<v8::internal::Smi, v8::internal::HeapNumber, v8::internal::BigInt, v8::internal::String, v8::internal::Symbol, v8::internal::Boolean, v8::internal::Null, v8::internal::Undefined, v8::internal::JSReceiver>>, v8::internal::Handle<v8::internal::Union<v8::internal::Smi, v8::internal::HeapNumber, v8::internal::BigInt, v8::internal::String, v8::internal::Symbol, v8::internal::Boolean, v8::internal::Null, v8::internal::Undefined, v8::internal::JSReceiver>>, v8::internal::Handle<v8::internal::Object>) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+17: 0x108b3008c v8::internal::Builtin_JsonStringify(int, unsigned long*, v8::internal::Isolate*) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+18: 0x1085dd394 Builtins_CEntry_Return1_ArgvOnStack_BuiltinExit [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+19: 0x12e6a5d90 
+20: 0x12e88fa1c 
+21: 0x12fa5aa5c 
+22: 0x10853d5ec Builtins_InterpreterEntryTrampoline [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+23: 0x12fa725d0 
+24: 0x12f77545c 
+25: 0x12f59b2a0 
+26: 0x12ec687ec 
+27: 0x12f13d77c 
+28: 0x12e9fd490 
+29: 0x108652058 Builtins_PromiseFulfillReactionJob [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+30: 0x10856a920 Builtins_RunMicrotasks [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+31: 0x10853a850 Builtins_JSRunMicrotasksEntry [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+32: 0x108bec8c8 v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+33: 0x108becf78 v8::internal::(anonymous namespace)::InvokeWithTryCatch(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+34: 0x108bed068 v8::internal::Execution::TryRunMicrotasks(v8::internal::Isolate*, v8::internal::MicrotaskQueue*) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+35: 0x108c0e558 v8::internal::MicrotaskQueue::RunMicrotasks(v8::internal::Isolate*) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+36: 0x108c0e374 v8::internal::MicrotaskQueue::PerformCheckpointInternal(v8::Isolate*) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+37: 0x10871bd78 node::InternalCallbackScope::Close() [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+38: 0x10871bc08 node::InternalCallbackScope::~InternalCallbackScope() [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+39: 0x10871b798 node::CallbackScope::~CallbackScope() [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+40: 0x108798944 (anonymous namespace)::uvimpl::Work::AfterThreadPoolWork(int) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+41: 0x108798d18 node::ThreadPoolWork::ScheduleWork()::'lambda'(uv_work_s*, int)::operator()(uv_work_s*, int) const [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+42: 0x108798bf4 node::ThreadPoolWork::ScheduleWork()::'lambda'(uv_work_s*, int)::__invoke(uv_work_s*, int) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+43: 0x104346db8 uv__work_done [/opt/homebrew/Cellar/libuv/1.52.0/lib/libuv.1.0.0.dylib]
+44: 0x10434a320 uv__async_io [/opt/homebrew/Cellar/libuv/1.52.0/lib/libuv.1.0.0.dylib]
+45: 0x104359088 uv__io_poll [/opt/homebrew/Cellar/libuv/1.52.0/lib/libuv.1.0.0.dylib]
+46: 0x10434aab8 uv_run [/opt/homebrew/Cellar/libuv/1.52.0/lib/libuv.1.0.0.dylib]
+47: 0x10871cdfc node::SpinEventLoopInternal(node::Environment*) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+48: 0x1087f0728 node::NodeMainInstance::Run(node::ExitCode*, node::Environment*) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+49: 0x1087f045c node::NodeMainInstance::Run() [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+50: 0x108794858 node::Start(int, char**) [/opt/homebrew/Cellar/node/25.6.1_1/lib/libnode.141.dylib]
+51: 0x180425d54 start [/usr/lib/dyld]
+time: command terminated abnormally
+      247.32 real       210.54 user       179.59 sys
+          3824533504  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            20919852  page reclaims
+                3944  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+              117205  voluntary context switches
+             6477909  involuntary context switches
+       2159035332562  instructions retired
+       1410328321449  cycles elapsed
+          6913637008  peak memory footprint

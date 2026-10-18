@@ -51,8 +51,10 @@ impl Runtime {
         let env: Vec<(String, String)> = std::env::vars().collect();
         let argv_json = serde_json::to_string(argv)?;
         let env_json = serde_json::to_string(&env.into_iter().collect::<std::collections::HashMap<_, _>>())?;
+        // deno_core needs Deno while restoring the snapshot; hide it only after
+        // initialization, before any user module can detect it as a Deno runtime.
         let script = format!(
-            "globalThis.__kestrel_init({argv_json}, {env_json}, {platform:?}, {pid});",
+            "delete globalThis.Deno; globalThis.__kestrel_init({argv_json}, {env_json}, {platform:?}, {pid});",
             platform = crate::nodeimpl::node_platform(),
             pid = std::process::id(),
         );

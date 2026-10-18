@@ -1,0 +1,14 @@
+{
+  "platform": "macOS-26.3-arm64-arm-64bit-Mach-O",
+  "source_head": "df737dff5e3223e77da93ba1e776ed344733a83f",
+  "working_tree_used": true,
+  "source_package_sha256": "bd5547d2c8c319676740ac49d69835730dcd14b4abb1209bb4479283a4753083",
+  "source_lock_sha256": "4d9de15c52c00969634d4d51bf0171206c1107925de59288513368e6bbb18097",
+  "config_changes": "Qcloud upload plugin and Sentry wrapping disabled only in test copy",
+  "install": "npm install --ignore-scripts --legacy-peer-deps; npm ci failed because source lock is stale",
+  "cache_policy": "remove .next each time; shared identical node_modules; retain OS file cache",
+  "rss_method": "sample sum of process-group RSS every 200ms; shared memory may be double counted",
+  "resolved_lock_sha256": "3c23ebc1f89a94b0c938b5ec71179ec7a2525ebc63f2273df0c0c5d131279357",
+  "next_version": "16.1.2",
+  "kestrel_sha256": "1c8f129b01cea512f9e553adf633089e476c9cba9d6254ec6e5f24c55e433388"
+}

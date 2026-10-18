@@ -1,0 +1,112 @@
+SERVICE_ENV production
+⚠ `eslint` configuration in next.config.js is no longer supported. See more info here: https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
+⚠ `images.domains` is deprecated in favor of `images.remotePatterns`. Please update next.config.js to protect your application from malicious users.
+⚠ Invalid next.config.js options detected: 
+⚠     Unrecognized key(s) in object: 'swcMinify' at "experimental"
+⚠     Unrecognized key(s) in object: 'eslint', 'publicRuntimeConfig'
+⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+▲ Next.js 16.1.2 (webpack)
+- Environments: .env
+- Experiments (use with caution):
+  · optimizePackageImports
+  ? swcMinify (invalid experimental key)
+
+  Creating an optimized production build ...
+Browserslist: browsers data (caniuse-lite) is 12 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+warn - The class `duration-[600ms]` is ambiguous and matches multiple utilities.
+warn - If this is content and not a class, replace it with `duration-&lsqb;600ms&rsqb;` to silence this warning.
+[BABEL] Note: The code generator has deoptimised the styling of /private/tmp/kestrel-reportify-build-20261018/app/node_modules/pdfjs-dist/build/pdf.js as it exceeds the max of 500KB.
+<w> [webpack.cache.PackFileCacheStrategy] Skipped not serializable cache item 'Compilation/modules|/private/tmp/kestrel-reportify-build-20261018/app/node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!/private/tmp/kestrel-reportify-build-20261018/app/node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!/private/tmp/kestrel-reportify-build-20261018/app/node_modules/@openuidev/react-ui/dist/components/index.css': No serializer registered for Warning
+<w> while serializing webpack/lib/cache/PackFileCacheStrategy.PackContentItems -> webpack/lib/NormalModule -> Array { 3 items } -> webpack/lib/ModuleWarning -> Warning
+⚠ Compiled with warnings in 8.9min
+
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+Warning
+
+(1:128270) autoprefixer: start value has mixed support, consider using flex-start instead
+
+Import trace for requested module:
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@thesysai/genui-sdk/dist/OpenUIThemeProvider-ChOGnULJ.js
+./node_modules/@thesysai/genui-sdk/dist/index.js
+./components/C1Render/index.tsx
+./app/(common)/share/artifact/[id]/page.client.tsx
+
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+Warning
+
+(1:128497) autoprefixer: start value has mixed support, consider using flex-start instead
+
+Import trace for requested module:
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@thesysai/genui-sdk/dist/OpenUIThemeProvider-ChOGnULJ.js
+./node_modules/@thesysai/genui-sdk/dist/index.js
+./components/C1Render/index.tsx
+./app/(common)/share/artifact/[id]/page.client.tsx
+
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+Warning
+
+(1:129056) autoprefixer: start value has mixed support, consider using flex-start instead
+
+Import trace for requested module:
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@thesysai/genui-sdk/dist/OpenUIThemeProvider-ChOGnULJ.js
+./node_modules/@thesysai/genui-sdk/dist/index.js
+./components/C1Render/index.tsx
+./app/(common)/share/artifact/[id]/page.client.tsx
+
+./node_modules/swagger-jsdoc/src/utils.js
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/swagger-jsdoc/src/utils.js
+./node_modules/swagger-jsdoc/src/specification.js
+./node_modules/swagger-jsdoc/src/lib.js
+./node_modules/swagger-jsdoc/index.js
+./node_modules/next-swagger-doc/dist/index.js
+./lib/swagger.ts
+./app/api/swagger/route.ts
+
+  Skipping validation of types
+  Collecting page data using 9 workers ...
+Error: Attempt to export a nullable value for "CryptoKey"
+    at ignore-listed frames
+Error: Attempt to export a nullable value for "CryptoKey"
+    at ignore-listed frames
+Error: Attempt to export a nullable value for "CryptoKey"
+    at ignore-listed frames
+Error: Attempt to export a nullable value for "CryptoKey"
+    at ignore-listed frames
+Error: Attempt to export a nullable value for "CryptoKey"
+    at ignore-listed frames
+Error: Attempt to export a nullable value for "CryptoKey"
+    at ignore-listed frames
+
+> Build error occurred
+Error: Failed to collect page data for /admin/system-config/admin-users
+    at ignore-listed frames { type: 'Error' }
+      539.43 real       153.00 user       111.25 sys
+          3962994688  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            15246220  page reclaims
+                6873  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                  55  messages sent
+                  41  messages received
+                  10  signals received
+              121462  voluntary context switches
+             4200383  involuntary context switches
+       1700109092109  instructions retired
+        968244938885  cycles elapsed
+         11838084064  peak memory footprint

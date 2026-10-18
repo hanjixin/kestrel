@@ -1,0 +1,7 @@
+{
+  "mode": "resume page generation from previously completed webpack compilation",
+  "build_id_restored_from_static_manifests": "kxvVpWcCrK3grSlBvDODC",
+  "workers": 2,
+  "heap_flag": "--max-old-space-size=6144",
+  "not_a_clean_build_benchmark": true
+}

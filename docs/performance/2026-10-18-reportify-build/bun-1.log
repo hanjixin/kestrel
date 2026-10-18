@@ -1,0 +1,20 @@
+SERVICE_ENV production
+⚠ `eslint` configuration in next.config.js is no longer supported. See more info here: https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
+⚠ `images.domains` is deprecated in favor of `images.remotePatterns`. Please update next.config.js to protect your application from malicious users.
+⚠ Invalid next.config.js options detected: 
+⚠     Unrecognized key(s) in object: 'swcMinify' at "experimental"
+⚠     Unrecognized key(s) in object: 'eslint', 'publicRuntimeConfig'
+⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+▲ Next.js 16.1.2 (webpack)
+- Environments: .env
+- Experiments (use with caution):
+  · optimizePackageImports
+  ? swcMinify (invalid experimental key)
+
+  Creating an optimized production build ...
+Browserslist: browsers data (caniuse-lite) is 12 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+[BABEL] Note: The code generator has deoptimised the styling of /private/tmp/kestrel-reportify-build-20261018/app/node_modules/pdfjs-dist/build/pdf.js as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of /private/tmp/kestrel-reportify-build-20261018/app/node_modules/pdfjs-dist/build/pdf.js as it exceeds the max of 500KB.

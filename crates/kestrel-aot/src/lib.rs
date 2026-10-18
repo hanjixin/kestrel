@@ -187,7 +187,7 @@ pub fn process(path: &Path, source: &str) -> Result<AotOutput> {
         src.replace_range(s as usize..e as usize, &rep);
     }
 
-    let mut prologue = String::from("const __kestrel_ops = Deno.core.ops;");
+    let mut prologue = String::from("import __kestrel_ops from \"kestrel:aot\";");
     let mut epilogue = String::new();
     let mut infos = Vec::new();
     for c in &cands {

@@ -1,0 +1,16 @@
+[
+  {
+    "runtime": "kestrel",
+    "round": 1,
+    "exit": 1,
+    "timeout": false,
+    "build_ok": false,
+    "seconds": 320.577,
+    "peak_group_rss_mib": 3805.45,
+    "observed_commands": [
+      "(kestrel)",
+      "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel node_modules/next/dist/bin/next build --webpack",
+      "/usr/bin/time -l /Users/hanjixin/Desktop/code/kestrel/target/release/kestrel node_modules/next/dist/bin/next build --webpack"
+    ]
+  }
+]

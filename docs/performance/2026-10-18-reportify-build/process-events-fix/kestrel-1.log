@@ -1,0 +1,94 @@
+SERVICE_ENV production
+⚠ `eslint` configuration in next.config.js is no longer supported. See more info here: https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
+⚠ `images.domains` is deprecated in favor of `images.remotePatterns`. Please update next.config.js to protect your application from malicious users.
+⚠ Invalid next.config.js options detected: 
+⚠     Unrecognized key(s) in object: 'swcMinify' at "experimental"
+⚠     Unrecognized key(s) in object: 'eslint', 'publicRuntimeConfig'
+⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+⚠ No build cache found. Please configure build caching for faster rebuilds. Read more: https://nextjs.org/docs/messages/no-cache
+▲ Next.js 16.1.2 (webpack)
+- Environments: .env
+- Experiments (use with caution):
+  · optimizePackageImports
+  ? swcMinify (invalid experimental key)
+
+  Creating an optimized production build ...
+Browserslist: browsers data (caniuse-lite) is 12 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+[BABEL] Note: The code generator has deoptimised the styling of /private/tmp/kestrel-reportify-build-20261018/app/node_modules/pdfjs-dist/build/pdf.js as it exceeds the max of 500KB.
+
+<--- Last few GCs --->
+
+[55775:0x9b9400000]    34482 ms: Scavenge 1374.9 (1405.2) -> 1371.8 (1405.2) MB, pooled: 0.0 MB, 0.95 / 0.00 ms (average mu = 0.235, current mu = 0.193) allocation failure; 
+[55775:0x9b9400000]    34677 ms: Incremental Mark-Compact (reduce) 1379.6 (1409.7) -> 1362.8 (1381.7) MB, pooled: 0.0 MB, 181.24 / 0.00 ms (+ 2.0 ms in 52 steps since start of marking, biggest step 1.9 ms, walltime since start of marking 190 ms) (average 
+
+
+#
+# Fatal JavaScript out of memory: Ineffective mark-compacts near heap limit
+#
+==== C stack trace ===============================
+
+    0   kestrel                             0x000000010533f260 v8::base::debug::StackTrace::StackTrace() + 28
+    1   kestrel                             0x0000000105344188 v8::platform::(anonymous namespace)::PrintStackTrace() + 24
+    2   kestrel                             0x0000000105334df8 v8::base::FatalOOM(v8::base::OOMType, char const*) + 68
+    3   kestrel                             0x00000001053d2b90 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, v8::OOMDetails const&) + 352
+    4   kestrel                             0x00000001055d2d90 v8::internal::Heap::stack() + 0
+    5   kestrel                             0x00000001055d2a84 v8::internal::Heap::OldGenerationConsumedBytes() const + 0
+    6   kestrel                             0x00000001055d198c v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags, v8::internal::PerformHeapLimitCheck, v8::internal::PerformIneffectiveMarkCompactCheck) + 1184
+    7   kestrel                             0x00000001055c74cc v8::internal::HeapAllocator::CollectGarbageAndRetryAllocation(v8::base::FunctionRef<bool ()>, v8::internal::AllocationType, v8::internal::GarbageCollectionReason) + 256
+    8   kestrel                             0x00000001055c7304 v8::internal::HeapAllocator::RetryCustomAllocate(v8::base::FunctionRef<bool ()>, v8::internal::AllocationType, v8::internal::GarbageCollectionReason) + 44
+    9   kestrel                             0x00000001055c6cd0 v8::internal::HeapAllocator::AllocateRawSlowPath(v8::internal::HeapAllocator::AllocationRetryMode, int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment, v8::internal::AllocationHint) + 92
+    10  kestrel                             0x00000001055a5f18 v8::internal::Factory::NewFillerObject(int, v8::internal::AllocationAlignment, v8::internal::AllocationType, v8::internal::AllocationOrigin) + 3016
+    11  kestrel                             0x0000000105a01be0 v8::internal::Runtime_AllocateInYoungGeneration(int, unsigned long*, v8::internal::Isolate*) + 88
+    12  kestrel                             0x0000000106b9388c Builtins_CEntry_Return1_ArgvOnStack_NoBuiltinExit + 76
+    13  ???                                 0x00000001167aecac 0x0 + 4672122028
+    14  ???                                 0x000000011738854c 0x0 + 4684547404
+    15  ???                                 0x00000001167acdac 0x0 + 4672114092
+    16  ???                                 0x00000001174f1864 0x0 + 4686026852
+    17  ???                                 0x00000001175a240c 0x0 + 4686750732
+    18  ???                                 0x00000001162cb534 0x0 + 4666996020
+    19  ???                                 0x000000011637ea48 0x0 + 4667730504
+    20  ???                                 0x000000011776a7ac 0x0 + 4688619436
+    21  ???                                 0x0000000116c0ac98 0x0 + 4676693144
+    22  ???                                 0x00000001162caa80 0x0 + 4666993280
+    23  ???                                 0x0000000117500714 0x0 + 4686087956
+    24  ???                                 0x00000001162ca5c4 0x0 + 4666992068
+    25  ???                                 0x00000001162ca190 0x0 + 4666990992
+    26  ???                                 0x0000000116e80264 0x0 + 4679271012
+    27  ???                                 0x0000000116d649f8 0x0 + 4678109688
+    28  ???                                 0x0000000116d55a6c 0x0 + 4678048364
+    29  kestrel                             0x0000000106aea988 Builtins_JSEntryTrampoline + 168
+    30  kestrel                             0x0000000106aea678 Builtins_JSEntry + 152
+    31  kestrel                             0x000000010551297c v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) + 1768
+    32  kestrel                             0x0000000105512278 v8::internal::Execution::Call(v8::internal::Isolate*, v8::internal::DirectHandle<v8::internal::Object>, v8::internal::DirectHandle<v8::internal::Object>, v8::base::Vector<v8::internal::DirectHandle<v8::internal::Object> const>) + 136
+    33  kestrel                             0x00000001053e10b4 v8::Function::Call(v8::Isolate*, v8::Local<v8::Context>, v8::Local<v8::Value>, int, v8::Local<v8::Value>*) + 456
+    34  kestrel                             0x0000000104d23c30 _RNvMsg_NtNtCsc1S55QYhDrY_9deno_core7runtime9jsruntimeNtB5_9JsRuntime30drain_next_tick_and_macrotasks + 236
+    35  kestrel                             0x0000000104d22214 _RNvMsc_NtNtCsc1S55QYhDrY_9deno_core7runtime9jsruntimeNtB5_9JsRuntime21poll_event_loop_inner + 6388
+    36  kestrel                             0x0000000104d2084c _RNvMsc_NtNtCsc1S55QYhDrY_9deno_core7runtime9jsruntimeNtB5_9JsRuntime15poll_event_loop + 188
+    37  kestrel                             0x0000000104dcba54 _RNCNvMNtCs28sqxW5i6NC_14kestrel_engine7runtimeNtB4_7Runtime8run_main0B6_ + 8340
+    38  kestrel                             0x0000000104f2aa44 _RNCNvNtCs28sqxW5i6NC_14kestrel_engine7runtime8run_file0B5_ + 68
+    39  kestrel                             0x0000000104f2a030 _RNvNtCs28sqxW5i6NC_14kestrel_engine7runtime8run_file + 2740
+    40  kestrel                             0x0000000104b28c08 _RNvCsjBXCay5NnvX_7kestrel4main + 3008
+    41  kestrel                             0x0000000104b2800c _RINvNtNtCs1SSuMAdGM58_3std3sys9backtrace28___rust_begin_short_backtraceFEuuECsjBXCay5NnvX_7kestrel + 12
+    42  kestrel                             0x0000000104b292f4 main + 852
+    43  dyld                                0x0000000180425d54 start + 7184
+time: command terminated abnormally
+       34.81 real        67.51 user         9.42 sys
+          1839595520  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              339477  page reclaims
+                1653  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   0  messages sent
+                   0  messages received
+                   0  signals received
+               49636  voluntary context switches
+              853539  involuntary context switches
+        595452824655  instructions retired
+        281014140284  cycles elapsed
+          2179126240  peak memory footprint

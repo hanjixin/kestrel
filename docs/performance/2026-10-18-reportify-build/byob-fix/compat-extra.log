@@ -1,0 +1,3 @@
+PASS vmmod.mjs exits=[0, 0]
+PASS napi.cjs exits=[0, 0]
+2/2 passed

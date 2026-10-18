@@ -1,5 +1,5 @@
 // node:module — CommonJS loader shared by `require()` and the ESM shim for CJS files.
-import { ops, nodeError } from "ext:kestrel/internal.js";
+import { core, ops, nodeError } from "ext:kestrel/internal.js";
 import { dirname } from "ext:kestrel/node/path.js";
 
 export const builtinModules = ["assert", "buffer", "child_process", "crypto", "events", "fs", "fs/promises", "module", "os", "path", "path/posix", "process", "querystring", "stream", "string_decoder", "timers", "timers/promises", "tty", "url", "util", "util/types", "worker_threads", "zlib", "http", "https", "net", "readline", "tls", "dns", "dns/promises", "dgram", "perf_hooks", "v8", "vm", "cluster", "constants", "sys", "async_hooks", "inspector"];
@@ -77,7 +77,7 @@ function loadFile(filename, parentFilename) {
   const cached = cache[filename];
   if (cached) return cached.exports;
   if (requireLog === null) requireLog = !!globalThis.process.env.KESTREL_REQUIRE_LOG;
-  if (requireLog) Deno.core.print("[require] " + filename + "\n", true);
+  if (requireLog) core.print("[require] " + filename + "\n", true);
   const module = new Module(filename, cache[parentFilename] || null);
   module.filename = filename;
   module.paths = Module._nodeModulePaths(dirname(filename));
@@ -126,7 +126,6 @@ export const _extensions = Module._extensions;
 // Node-API addons: the native layer calls back for Buffers, fatal exceptions and
 // async_hooks events (the hooks are no-ops here, as with createHook).
 export function dlopenExports(filename) {
-  const ops = Deno.core.ops;
   const createBuffer = (ab) => globalThis.Buffer.from(ab);
   const reportError = (e) => { globalThis.process.emit("uncaughtException", e); };
   const noop = () => {};

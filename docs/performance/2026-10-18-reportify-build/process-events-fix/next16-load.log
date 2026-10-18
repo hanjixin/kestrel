@@ -1,0 +1,4 @@
+PASS next/dist/cli/next-build
+PASS next/dist/build
+SERVICE_ENV undefined
+PASS ./next.config.js

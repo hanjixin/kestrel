@@ -1,0 +1,8 @@
+[aot] /Users/hanjixin/Desktop/code/kestrel/examples/aot_check.ts: compiled fib/1 -> native #0
+[aot] /Users/hanjixin/Desktop/code/kestrel/examples/aot_check.ts: compiled bits/2 -> native #1
+[aot] /Users/hanjixin/Desktop/code/kestrel/examples/aot_check.ts: compiled mixed/1 -> native #2
+[aot] /Users/hanjixin/Desktop/code/kestrel/examples/aot_check.ts: compiled loopy/1 -> native #3
+[aot] /Users/hanjixin/Desktop/code/kestrel/examples/aot_check.ts: compiled trunc32/1 -> native #4
+[aot] /Users/hanjixin/Desktop/code/kestrel/examples/aot_check.ts: kept notReturning on V8: not every path returns
+[aot] /Users/hanjixin/Desktop/code/kestrel/examples/aot_check.ts: kept reassigned on V8: function binding is reassigned
+[aot] /Users/hanjixin/Desktop/code/kestrel/examples/aot_check.ts: kept usesString on V8: unsupported expression Discriminant(5)

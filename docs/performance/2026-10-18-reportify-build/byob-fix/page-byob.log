@@ -1,0 +1,4 @@
+TypeError: Cannot set properties of undefined (setting 'prepareStackTrace')
+    at ignore-listed frames
+Error: Failed to collect page data for /admin/system-config/admin-users
+    at /private/tmp/kestrel-reportify-build-20261018/app/node_modules/next/dist/build/utils.js:821:37

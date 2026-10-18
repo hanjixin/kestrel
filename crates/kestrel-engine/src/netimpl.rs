@@ -834,12 +834,20 @@ pub fn op_vm_run_in_new_context<'a>(scope: &mut v8::PinScope<'a, '_>, #[string] 
     let result = {
         let cs = &mut v8::ContextScope::new(scope, ctx);
         let global = ctx.global(cs);
-        // Copy sandbox properties into the new global.
-        let names = sandbox.get_own_property_names(cs, Default::default()).ok_or_else(|| JsErrorBox::generic("sandbox"))?;
+        // Include non-enumerable globals and symbol keys (used by Edge Runtime).
+        let names = sandbox.get_own_property_names(cs, v8::GetPropertyNamesArgs {
+            property_filter: v8::PropertyFilter::ALL_PROPERTIES,
+            key_conversion: v8::KeyConversionMode::ConvertToString,
+            ..Default::default()
+        }).ok_or_else(|| JsErrorBox::generic("sandbox"))?;
         for i in 0..names.length() {
             if let Some(k) = names.get_index(cs, i) {
                 if let Some(v) = sandbox.get(cs, k) {
-                    global.set(cs, k, v);
+                    // Keep hidden host hooks hidden: otherwise copy-back invokes their
+                    // setters on every evaluation (e.g. Edge Runtime error handlers).
+                    if let (Ok(name), Some(attributes)) = (v8::Local::<v8::Name>::try_from(k), sandbox.get_property_attributes(cs, k)) {
+                        global.define_own_property(cs, name, v, attributes);
+                    }
                 }
             }
         }

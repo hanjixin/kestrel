@@ -1,6 +1,7 @@
 import { encodeMessage, MessageDecoder, closeChannel } from "ext:kestrel/ipc.js";
 // Globals that node:* modules may touch at evaluation time. Evaluated before them.
 import { core, ops, inspect, format, utf8Encode, utf8Decode, nodeError } from "ext:kestrel/internal.js";
+import { EventEmitter } from "ext:kestrel/node/events.js";
 import { URL, URLSearchParams } from "ext:kestrel/node/url.js";
 
 globalThis.global = globalThis;
@@ -249,18 +250,13 @@ globalThis.structuredClone = function structuredClone(v, opts) {
 const osInfo = ops.op_k_os_info;
 let cachedOs = null;
 const getOs = () => (cachedOs ??= osInfo());
-const listeners = new Map();
-const emitter = {
-  on(ev, fn) { (listeners.get(ev) || listeners.set(ev, []).get(ev)).push(fn); return process; },
-  once(ev, fn) { const w = (...a) => { process.off(ev, w); fn(...a); }; w.listener = fn; return process.on(ev, w); },
-  off(ev, fn) { const l = listeners.get(ev); if (l) { const i = l.findIndex((x) => x === fn || x.listener === fn); if (i !== -1) l.splice(i, 1); } return process; },
-  emit(ev, ...a) { const l = listeners.get(ev); if (!l || !l.length) return false; for (const fn of l.slice()) fn(...a); return true; },
-  listeners(ev) { return (listeners.get(ev) || []).slice(); },
-  listenerCount(ev) { return (listeners.get(ev) || []).length; },
-  removeAllListeners(ev) { if (ev === undefined) listeners.clear(); else listeners.delete(ev); return process; },
-  setMaxListeners() { return process; }, getMaxListeners() { return 10; }, prependListener(ev, fn) { (listeners.get(ev) || listeners.set(ev, []).get(ev)).unshift(fn); return process; }, eventNames() { return [...listeners.keys()]; },
-};
-emitter.addListener = emitter.on; emitter.removeListener = emitter.off;
+// Share Node event semantics (once wrappers, listener identity and reentrancy)
+// instead of maintaining a second, incomplete process-only emitter.
+const emitter = Object.fromEntries(
+  Object.getOwnPropertyNames(EventEmitter.prototype)
+    .filter(key => key !== "constructor" && typeof EventEmitter.prototype[key] === "function")
+    .map(key => [key, EventEmitter.prototype[key]])
+);
 const stdStream = (fd) => ({
   fd, get isTTY() { return ops.op_k_isatty(fd); }, writable: true, columns: 80, rows: 24,
   write(chunk, enc, cb) { if (typeof enc === "function") { cb = enc; enc = undefined; } ops.op_k_write_fd(fd, typeof chunk === "string" ? utf8Encode(chunk) : chunk instanceof Uint8Array ? chunk : utf8Encode(String(chunk))); if (cb) queueMicrotask(cb); return true; },
@@ -311,6 +307,7 @@ const process = {
   [Symbol.toStringTag]: "process",
 };
 globalThis.process = process;
+EventEmitter.init.call(process);
 // env writes propagate to the real environment (child-visible later).
 process.env = new Proxy({}, {
   get: (t, k) => t[k],
@@ -344,7 +341,8 @@ function setupIpcChild(fd, advanced) {
   const origOn = process.on;
   process.on = function (ev, fn) { const r = origOn.call(process, ev, fn); if (ev === "message") pump(); return r; };
   process.addListener = process.on;
-  process.once = function (ev, fn) { const w = (...a) => { process.off(ev, w); fn(...a); }; w.listener = fn; return process.on(ev, w); };
+  const origPrepend = process.prependListener;
+  process.prependListener = function (ev, fn) { const r = origPrepend.call(process, ev, fn); if (ev === "message") pump(); return r; };
 }
 globalThis.__kestrel_init = (argv, env, platform, pid) => {
   startMs = ops.op_k_now_ms();

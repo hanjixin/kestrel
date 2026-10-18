@@ -1,0 +1,6 @@
+{
+  "reason": "manually stopped due to memory pressure on 16 GiB host",
+  "sample_physical_footprint": "12.4G",
+  "sample_peak_physical_footprint": "13.5G",
+  "source": "bun-stack.txt"
+}

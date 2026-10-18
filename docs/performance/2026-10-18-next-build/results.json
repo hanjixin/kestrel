@@ -1,0 +1,264 @@
+{
+  "metadata": {
+    "platform": "macOS-26.3-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "node": "v25.6.1",
+    "bun": "1.3.11",
+    "kestrel_sha256": "1c8f129b01cea512f9e553adf633089e476c9cba9d6254ec6e5f24c55e433388",
+    "rounds_requested": 3,
+    "timeout_seconds": 120,
+    "memory_method": "ps sum of RSS for the build process group, sampled about every 100ms; shared pages can be counted more than once",
+    "cache_policy": ".next removed before each build; dependencies and OS file cache retained; dependency installation and smoke checks excluded from build time",
+    "next": "15.5.28",
+    "lock_sha256": "ee279d2d1a7d08acd5c1c12ee3b4a53713e3537c7dcd8b2041cd8d6148bc75f2"
+  },
+  "samples": [
+    {
+      "runtime": "node",
+      "round": 1,
+      "command": [
+        "/opt/homebrew/bin/node",
+        "node_modules/next/dist/bin/next",
+        "build"
+      ],
+      "exit": 0,
+      "timeout": false,
+      "build_ok": true,
+      "wall_seconds": 15.249,
+      "sampled_process_group_peak_rss_mib": 1303.81,
+      "observed_commands": [
+        "(node)",
+        "/opt/homebrew/Cellar/node/25.6.1_1/bin/node /private/tmp/kestrel-next-build-20261018/node/node_modules/next/dist/compiled/jest-worker/processChild.js",
+        "/opt/homebrew/bin/node node_modules/next/dist/bin/next build",
+        "/usr/bin/time -l /opt/homebrew/bin/node node_modules/next/dist/bin/next build"
+      ],
+      "time_max_rss_mib": 878.91,
+      "smoke": {
+        "ok": true,
+        "startup_and_validation_seconds": 0.279,
+        "script_assets": 5
+      },
+      "output_bytes_without_cache": 50004698
+    },
+    {
+      "runtime": "bun",
+      "round": 1,
+      "command": [
+        "/Users/hanjixin/.bun/bin/bun",
+        "--bun",
+        "node_modules/next/dist/bin/next",
+        "build"
+      ],
+      "exit": 0,
+      "timeout": false,
+      "build_ok": true,
+      "wall_seconds": 13.259,
+      "sampled_process_group_peak_rss_mib": 1417.14,
+      "observed_commands": [
+        "(bun)",
+        "/Users/hanjixin/.bun/bin/bun --bun /private/tmp/kestrel-next-build-20261018/bun/node_modules/next/dist/compiled/jest-worker/processChild.js",
+        "/Users/hanjixin/.bun/bin/bun --bun node_modules/next/dist/bin/next build",
+        "/usr/bin/time -l /Users/hanjixin/.bun/bin/bun --bun node_modules/next/dist/bin/next build",
+        "<defunct>"
+      ],
+      "time_max_rss_mib": 877.0,
+      "smoke": {
+        "ok": true,
+        "startup_and_validation_seconds": 0.269,
+        "script_assets": 5
+      },
+      "output_bytes_without_cache": 49999574
+    },
+    {
+      "runtime": "kestrel",
+      "round": 1,
+      "command": [
+        "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel",
+        "node_modules/next/dist/bin/next",
+        "build"
+      ],
+      "exit": 0,
+      "timeout": false,
+      "build_ok": true,
+      "wall_seconds": 12.816,
+      "sampled_process_group_peak_rss_mib": 884.08,
+      "observed_commands": [
+        "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel /private/tmp/kestrel-next-build-20261018/kestrel/node_modules/next/dist/compiled/jest-worker/processChild.js",
+        "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel node_modules/next/dist/bin/next build",
+        "/usr/bin/time -l /Users/hanjixin/Desktop/code/kestrel/target/release/kestrel node_modules/next/dist/bin/next build"
+      ],
+      "time_max_rss_mib": 539.81,
+      "smoke": {
+        "ok": true,
+        "startup_and_validation_seconds": 0.348,
+        "script_assets": 5
+      },
+      "output_bytes_without_cache": 49998337
+    },
+    {
+      "runtime": "bun",
+      "round": 2,
+      "command": [
+        "/Users/hanjixin/.bun/bin/bun",
+        "--bun",
+        "node_modules/next/dist/bin/next",
+        "build"
+      ],
+      "exit": 0,
+      "timeout": false,
+      "build_ok": true,
+      "wall_seconds": 8.472,
+      "sampled_process_group_peak_rss_mib": 1398.84,
+      "observed_commands": [
+        "(bun)",
+        "/Users/hanjixin/.bun/bin/bun --bun /private/tmp/kestrel-next-build-20261018/bun/node_modules/next/dist/compiled/jest-worker/processChild.js",
+        "/Users/hanjixin/.bun/bin/bun --bun node_modules/next/dist/bin/next build",
+        "/usr/bin/time -l /Users/hanjixin/.bun/bin/bun --bun node_modules/next/dist/bin/next build",
+        "<defunct>"
+      ],
+      "time_max_rss_mib": 871.48,
+      "smoke": {
+        "ok": true,
+        "startup_and_validation_seconds": 0.315,
+        "script_assets": 5
+      },
+      "output_bytes_without_cache": 49999141
+    },
+    {
+      "runtime": "kestrel",
+      "round": 2,
+      "command": [
+        "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel",
+        "node_modules/next/dist/bin/next",
+        "build"
+      ],
+      "exit": 0,
+      "timeout": false,
+      "build_ok": true,
+      "wall_seconds": 8.333,
+      "sampled_process_group_peak_rss_mib": 867.28,
+      "observed_commands": [
+        "(kestrel)",
+        "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel /private/tmp/kestrel-next-build-20261018/kestrel/node_modules/next/dist/compiled/jest-worker/processChild.js",
+        "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel node_modules/next/dist/bin/next build",
+        "/usr/bin/time -l /Users/hanjixin/Desktop/code/kestrel/target/release/kestrel node_modules/next/dist/bin/next build"
+      ],
+      "time_max_rss_mib": 589.53,
+      "smoke": {
+        "ok": true,
+        "startup_and_validation_seconds": 0.302,
+        "script_assets": 5
+      },
+      "output_bytes_without_cache": 49997927
+    },
+    {
+      "runtime": "node",
+      "round": 2,
+      "command": [
+        "/opt/homebrew/bin/node",
+        "node_modules/next/dist/bin/next",
+        "build"
+      ],
+      "exit": 0,
+      "timeout": false,
+      "build_ok": true,
+      "wall_seconds": 9.704,
+      "sampled_process_group_peak_rss_mib": 1308.92,
+      "observed_commands": [
+        "(node)",
+        "/opt/homebrew/Cellar/node/25.6.1_1/bin/node /private/tmp/kestrel-next-build-20261018/node/node_modules/next/dist/compiled/jest-worker/processChild.js",
+        "/opt/homebrew/bin/node node_modules/next/dist/bin/next build",
+        "/usr/bin/time -l /opt/homebrew/bin/node node_modules/next/dist/bin/next build"
+      ],
+      "time_max_rss_mib": 796.66,
+      "smoke": {
+        "ok": true,
+        "startup_and_validation_seconds": 0.291,
+        "script_assets": 5
+      },
+      "output_bytes_without_cache": 50004654
+    },
+    {
+      "runtime": "kestrel",
+      "round": 3,
+      "command": [
+        "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel",
+        "node_modules/next/dist/bin/next",
+        "build"
+      ],
+      "exit": 0,
+      "timeout": false,
+      "build_ok": true,
+      "wall_seconds": 8.628,
+      "sampled_process_group_peak_rss_mib": 855.25,
+      "observed_commands": [
+        "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel /private/tmp/kestrel-next-build-20261018/kestrel/node_modules/next/dist/compiled/jest-worker/processChild.js",
+        "/Users/hanjixin/Desktop/code/kestrel/target/release/kestrel node_modules/next/dist/bin/next build",
+        "/usr/bin/time -l /Users/hanjixin/Desktop/code/kestrel/target/release/kestrel node_modules/next/dist/bin/next build"
+      ],
+      "time_max_rss_mib": 579.64,
+      "smoke": {
+        "ok": true,
+        "startup_and_validation_seconds": 0.286,
+        "script_assets": 5
+      },
+      "output_bytes_without_cache": 49997940
+    },
+    {
+      "runtime": "node",
+      "round": 3,
+      "command": [
+        "/opt/homebrew/bin/node",
+        "node_modules/next/dist/bin/next",
+        "build"
+      ],
+      "exit": 0,
+      "timeout": false,
+      "build_ok": true,
+      "wall_seconds": 9.708,
+      "sampled_process_group_peak_rss_mib": 1269.58,
+      "observed_commands": [
+        "(node)",
+        "/opt/homebrew/Cellar/node/25.6.1_1/bin/node /private/tmp/kestrel-next-build-20261018/node/node_modules/next/dist/compiled/jest-worker/processChild.js",
+        "/opt/homebrew/bin/node node_modules/next/dist/bin/next build",
+        "/usr/bin/time -l /opt/homebrew/bin/node node_modules/next/dist/bin/next build"
+      ],
+      "time_max_rss_mib": 848.92,
+      "smoke": {
+        "ok": true,
+        "startup_and_validation_seconds": 0.288,
+        "script_assets": 5
+      },
+      "output_bytes_without_cache": 50004680
+    },
+    {
+      "runtime": "bun",
+      "round": 3,
+      "command": [
+        "/Users/hanjixin/.bun/bin/bun",
+        "--bun",
+        "node_modules/next/dist/bin/next",
+        "build"
+      ],
+      "exit": 0,
+      "timeout": false,
+      "build_ok": true,
+      "wall_seconds": 9.086,
+      "sampled_process_group_peak_rss_mib": 1358.58,
+      "observed_commands": [
+        "(bun)",
+        "/Users/hanjixin/.bun/bin/bun --bun /private/tmp/kestrel-next-build-20261018/bun/node_modules/next/dist/compiled/jest-worker/processChild.js",
+        "/Users/hanjixin/.bun/bin/bun --bun node_modules/next/dist/bin/next build",
+        "/usr/bin/time -l /Users/hanjixin/.bun/bin/bun --bun node_modules/next/dist/bin/next build",
+        "<defunct>"
+      ],
+      "time_max_rss_mib": 833.03,
+      "smoke": {
+        "ok": true,
+        "startup_and_validation_seconds": 0.249,
+        "script_assets": 5
+      },
+      "output_bytes_without_cache": 49999178
+    }
+  ]
+}

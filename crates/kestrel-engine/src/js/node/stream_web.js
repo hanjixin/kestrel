@@ -11,4 +11,8 @@ export const ReadableStreamDefaultReader = globalThis.ReadableStreamDefaultReade
 export const ReadableStreamDefaultController = globalThis.ReadableStreamDefaultController;
 export const WritableStreamDefaultWriter = globalThis.WritableStreamDefaultWriter;
 export const WritableStreamDefaultController = globalThis.WritableStreamDefaultController;
-export default { ReadableStream, WritableStream, TransformStream, ByteLengthQueuingStrategy, CountQueuingStrategy, TextEncoderStream, TextDecoderStream, ReadableStreamDefaultReader, ReadableStreamDefaultController, WritableStreamDefaultWriter, WritableStreamDefaultController };
+export const ReadableStreamBYOBReader = globalThis.ReadableStreamBYOBReader;
+export const ReadableStreamBYOBRequest = globalThis.ReadableStreamBYOBRequest;
+export const ReadableByteStreamController = globalThis.ReadableByteStreamController;
+export const TransformStreamDefaultController = globalThis.TransformStreamDefaultController;
+export default { ReadableStreamBYOBReader, ReadableStreamBYOBRequest, ReadableByteStreamController, TransformStreamDefaultController, ReadableStream, WritableStream, TransformStream, ByteLengthQueuingStrategy, CountQueuingStrategy, TextEncoderStream, TextDecoderStream, ReadableStreamDefaultReader, ReadableStreamDefaultController, WritableStreamDefaultWriter, WritableStreamDefaultController };

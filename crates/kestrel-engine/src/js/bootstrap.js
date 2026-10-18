@@ -6,7 +6,7 @@ import { core, ops, utf8Decode, utf8Encode, nodeError, kEmpty } from "ext:kestre
 import assert from "ext:kestrel/node/assert.js";
 import buffer, { Buffer, Blob, File } from "ext:kestrel/node/buffer.js";
 import child_process from "ext:kestrel/node/child_process.js";
-import crypto from "ext:kestrel/node/crypto.js";
+import crypto, { Crypto, CryptoKey, SubtleCrypto } from "ext:kestrel/node/crypto.js";
 import events from "ext:kestrel/node/events.js";
 import fs from "ext:kestrel/node/fs.js";
 import fsPromises from "ext:kestrel/node/fs_promises.js";
@@ -65,6 +65,7 @@ globalThis.Buffer = Buffer;
 globalThis.Blob = Blob;
 globalThis.File = File;
 globalThis.crypto = crypto.webcrypto;
+Object.assign(globalThis, { Crypto, CryptoKey, SubtleCrypto });
 let mainRequire = null;
 Object.defineProperty(globalThis, "require", { configurable: true, enumerable: false, get() { return mainRequire ??= module.createRequire(globalThis.process.cwd() + "/__main__"); }, set(v) { mainRequire = v; } });
 Object.defineProperty(globalThis, "module", { value: undefined, writable: true, configurable: true });
@@ -306,3 +307,12 @@ function serve(options) {
   return { port: boundPort, hostname, workers, stop() { return stopping ??= ops.op_kestrel_http_close(rid); } };
 }
 globalThis.Kestrel = Object.freeze({ serve, get workerId() { return ops.op_kestrel_worker_id(); }, version: "0.0.1" });
+
+// deno_core is an implementation detail, not a supported public Deno runtime.
+// Builtins retain their private core/ops imports; libraries should select Node APIs.
+Object.defineProperty(globalThis, Symbol.for("kestrel.aot.ops"), {
+  value: Object.freeze(Object.fromEntries(Array.from({ length: 7 }, (_, arity) => {
+    const name = `op_kestrel_call${arity}`;
+    return [name, ops[name]];
+  }))),
+});

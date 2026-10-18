@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict';
+import { ReadableStream, WritableStream, TransformStream, TextEncoderStream, TextDecoderStream } from 'node:stream/web';
+const output=[];
+await ReadableStream.from([1,2,3]).pipeThrough(new TransformStream({transform(v,c){c.enqueue(v*2);}})).pipeTo(new WritableStream({async write(v){await Promise.resolve();output.push(v);}}));
+assert.deepEqual(output,[2,4,6]);
+let text='';
+await ReadableStream.from(['hello ','世界']).pipeThrough(new TextEncoderStream()).pipeThrough(new TextDecoderStream()).pipeTo(new WritableStream({write(s){text+=s;}}));
+assert.equal(text,'hello 世界');
+let cancelReason;
+const failure=new Error('sink failed');
+const source=new ReadableStream({pull(c){c.enqueue('x');},cancel(r){cancelReason=r;}});
+await assert.rejects(source.pipeTo(new WritableStream({write(){throw failure;}})),/sink failed/);
+assert.equal(cancelReason,failure);assert.equal(source.locked,false);
+// ready applies backpressure and the pending write resolves only after the sink does.
+let finish;
+const writer=new WritableStream({write(){return new Promise(r=>{finish=r;});}},{highWaterMark:1}).getWriter();
+const pending=writer.write(1);let ready=false;writer.ready.then(()=>{ready=true;});
+await Promise.resolve();await Promise.resolve();assert.equal(ready,false);
+finish();await pending;await writer.ready;assert.equal(ready,true);await writer.close();writer.releaseLock();
+console.log('web streams pipelines and backpressure ok');

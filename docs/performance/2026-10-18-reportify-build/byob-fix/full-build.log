@@ -1,0 +1,342 @@
+SERVICE_ENV production
+⚠ `eslint` configuration in next.config.js is no longer supported. See more info here: https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
+⚠ `images.domains` is deprecated in favor of `images.remotePatterns`. Please update next.config.js to protect your application from malicious users.
+⚠ Invalid next.config.js options detected: 
+⚠     Unrecognized key(s) in object: 'swcMinify' at "experimental"
+⚠     Unrecognized key(s) in object: 'eslint', 'publicRuntimeConfig'
+⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+▲ Next.js 16.1.2 (webpack)
+- Environments: .env
+- Experiments (use with caution):
+  · cpus: 2
+  · optimizePackageImports
+  ? swcMinify (invalid experimental key)
+
+  Creating an optimized production build ...
+Browserslist: browsers data (caniuse-lite) is 12 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+[BABEL] Note: The code generator has deoptimised the styling of /private/tmp/kestrel-reportify-build-20261018/app/node_modules/pdfjs-dist/build/pdf.js as it exceeds the max of 500KB.
+[BABEL] Note: The code generator has deoptimised the styling of /private/tmp/kestrel-reportify-build-20261018/app/node_modules/pdfjs-dist/build/pdf.js as it exceeds the max of 500KB.
+
+warn - The class `duration-[600ms]` is ambiguous and matches multiple utilities.
+warn - If this is content and not a class, replace it with `duration-&lsqb;600ms&rsqb;` to silence this warning.
+[BABEL] Note: The code generator has deoptimised the styling of /private/tmp/kestrel-reportify-build-20261018/app/node_modules/pdfjs-dist/build/pdf.js as it exceeds the max of 500KB.
+<w> [webpack.cache.PackFileCacheStrategy] Skipped not serializable cache item 'Compilation/modules|/private/tmp/kestrel-reportify-build-20261018/app/node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!/private/tmp/kestrel-reportify-build-20261018/app/node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!/private/tmp/kestrel-reportify-build-20261018/app/node_modules/@openuidev/react-ui/dist/components/index.css': No serializer registered for Warning
+<w> while serializing webpack/lib/cache/PackFileCacheStrategy.PackContentItems -> webpack/lib/NormalModule -> Array { 3 items } -> webpack/lib/ModuleWarning -> Warning
+⚠ Compiled with warnings in 7.7min
+
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+Warning
+
+(1:128270) autoprefixer: start value has mixed support, consider using flex-start instead
+
+Import trace for requested module:
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@thesysai/genui-sdk/dist/OpenUIThemeProvider-ChOGnULJ.js
+./node_modules/@thesysai/genui-sdk/dist/index.js
+./components/C1Render/index.tsx
+./app/(common)/share/artifact/page.tsx
+
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+Warning
+
+(1:128497) autoprefixer: start value has mixed support, consider using flex-start instead
+
+Import trace for requested module:
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@thesysai/genui-sdk/dist/OpenUIThemeProvider-ChOGnULJ.js
+./node_modules/@thesysai/genui-sdk/dist/index.js
+./components/C1Render/index.tsx
+./app/(common)/share/artifact/page.tsx
+
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+Warning
+
+(1:129056) autoprefixer: start value has mixed support, consider using flex-start instead
+
+Import trace for requested module:
+./node_modules/@openuidev/react-ui/dist/components/index.css.webpack[javascript/auto]!=!./node_modules/next/dist/build/webpack/loaders/css-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[2]!./node_modules/next/dist/build/webpack/loaders/postcss-loader/src/index.js??ruleSet[1].rules[15].oneOf[10].use[3]!./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@openuidev/react-ui/dist/components/index.css
+./node_modules/@thesysai/genui-sdk/dist/OpenUIThemeProvider-ChOGnULJ.js
+./node_modules/@thesysai/genui-sdk/dist/index.js
+./components/C1Render/index.tsx
+./app/(common)/share/artifact/page.tsx
+
+./node_modules/swagger-jsdoc/src/utils.js
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+./node_modules/swagger-jsdoc/src/utils.js
+./node_modules/swagger-jsdoc/src/specification.js
+./node_modules/swagger-jsdoc/src/lib.js
+./node_modules/swagger-jsdoc/index.js
+./node_modules/next-swagger-doc/dist/index.js
+./lib/swagger.ts
+./app/api/swagger/route.ts
+
+  Skipping validation of types
+  Collecting page data using 2 workers ...
+⚠ Using edge runtime on a page currently disables static generation for that page
+  Generating static pages using 2 workers (0/99) ...
+  Generating static pages using 2 workers (24/99) 
+  Generating static pages using 2 workers (49/99) 
+[getAllSystemConfigsServer] Error fetching system configs: TypeError: fetch failed: error sending request for url (http://localhost:3000/proxy/system-config)
+    at async fetch (ext:kestrel/bootstrap.js:236:13)
+    at async e (.next/server/chunks/6368.js:23:713)
+    at async n (.next/server/app/(no-layout)/trial-apply/page.js:24:10291)
+[getAllSystemConfigsServer] Error fetching system configs: TypeError: fetch failed: error sending request for url (http://localhost:3000/proxy/system-config)
+    at async fetch (ext:kestrel/bootstrap.js:236:13)
+    at async e (.next/server/chunks/6368.js:23:713)
+    at async n (.next/server/app/(no-layout)/trial-apply/page.js:24:10291)
+[getAllSystemConfigsServer] Error fetching system configs: TypeError: fetch failed: error sending request for url (http://localhost:3000/proxy/system-config)
+    at async fetch (ext:kestrel/bootstrap.js:236:13)
+    at async e (.next/server/chunks/6368.js:23:713)
+    at async n (.next/server/app/(no-layout)/trial-apply/page.js:24:10291)
+[getAllSystemConfigsServer] Error fetching system configs: TypeError: fetch failed: error sending request for url (http://localhost:3000/proxy/system-config)
+    at async fetch (ext:kestrel/bootstrap.js:236:13)
+    at async e (.next/server/chunks/6368.js:23:713)
+    at async n (.next/server/app/(no-layout)/trial-apply/page.js:24:10291)
+The width(-1) and height(-1) of chart should be greater than 0,
+       please check the style of container, or the props width(100%) and height(100%),
+       or add a minWidth(0) or minHeight(undefined) or use aspect(undefined) to control the
+       height and width.
+[getAllSystemConfigsServer] Error fetching system configs: TypeError: fetch failed: error sending request for url (http://localhost:3000/proxy/system-config)
+    at async fetch (ext:kestrel/bootstrap.js:236:13)
+    at async e (.next/server/chunks/6368.js:23:713)
+    at async n (.next/server/app/(no-layout)/trial-apply/page.js:24:10291)
+[getAllSystemConfigsServer] Error fetching system configs: TypeError: fetch failed: error sending request for url (http://localhost:3000/proxy/system-config)
+    at async fetch (ext:kestrel/bootstrap.js:236:13)
+    at async e (.next/server/chunks/6368.js:23:713)
+    at async n (.next/server/app/(no-layout)/trial-apply/page.js:24:10291)
+[getAllSystemConfigsServer] Error fetching system configs: TypeError: fetch failed: error sending request for url (http://localhost:3000/proxy/system-config)
+    at async fetch (ext:kestrel/bootstrap.js:236:13)
+    at async e (.next/server/chunks/6368.js:23:713)
+    at async n (.next/server/app/(no-layout)/trial-apply/page.js:24:10291)
+  Generating static pages using 2 workers (74/99) 
+✓ Generating static pages using 2 workers (99/99) in 3.7s
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /404
+├ ƒ /admin
+├ ƒ /admin/ad
+├ ƒ /admin/agents
+├ ƒ /admin/channels
+├ ƒ /admin/channels/edit
+├ ƒ /admin/company
+├ ƒ /admin/company/edit
+├ ƒ /admin/mcps
+├ ƒ /admin/mcps/aliMcpTemplate
+├ ƒ /admin/organizations
+├ ƒ /admin/reports
+├ ƒ /admin/reports/edit
+├ ƒ /admin/reports/prompt
+├ ƒ /admin/skills
+├ ƒ /admin/stocks
+├ ƒ /admin/stocks/edit
+├ ƒ /admin/system-config
+├ ƒ /admin/system-config/admin-users
+├ ƒ /admin/system-config/internal-api-keys
+├ ƒ /admin/system-config/permissions
+├ ƒ /admin/system-config/roles
+├ ƒ /admin/threads
+├ ƒ /admin/trial-apply
+├ ƒ /admin/user/credit-subscription
+├ ƒ /admin/user/list
+├ ƒ /admin/user/record
+├ ƒ /admin/user/record-list
+├ ƒ /admin/workflow-components
+├ ƒ /agents
+├ ƒ /agents/[id]
+├ ƒ /agents/[id]/chat/[conversation_id]
+├ ƒ /agents/create
+├ ƒ /agents/my
+├ ƒ /agents/playground
+├ ƒ /agents/tasks
+├ ƒ /api-doc
+├ ƒ /api/account
+├ ƒ /api/ad
+├ ƒ /api/admin-backend/[...path]
+├ ƒ /api/auth
+├ ƒ /api/health
+├ ƒ /api/md-to-file
+├ ƒ /api/notice
+├ ƒ /api/parseCallHtml
+├ ƒ /api/reports/search
+├ ƒ /api/site/companies
+├ ƒ /api/site/reports
+├ ƒ /api/site/xml
+├ ƒ /api/svg
+├ ƒ /api/swagger
+├ ƒ /api/test
+├ ƒ /api/translate
+├ ƒ /api/trial-apply
+├ ƒ /app/[id]
+├ ƒ /apps/[id]
+├ ƒ /apps/my
+├ ƒ /backtest-chart-preview
+├ ƒ /beta-apply
+├ ƒ /bot
+├ ƒ /bot/chat
+├ ƒ /calendar
+├ ƒ /calendar-file/[id]
+├ ƒ /channels/[id]/documents
+├ ƒ /chat
+├ ƒ /claw
+├ ƒ /claw/chat
+├ ƒ /columns
+├ ƒ /columns/[id]
+├ ƒ /columns/reports/[id]
+├ ƒ /companies
+├ ƒ /companies/[id]
+├ ƒ /companies/[id]/documents
+├ ƒ /contact
+├ ƒ /dashboards
+├ ƒ /dashboards/[id]
+├ ƒ /dashboards/widgets
+├ ƒ /dashboards/widgets/[id]
+├ ƒ /explore/search
+├ ƒ /explore/search/[id]
+├ ƒ /explore/search/agent/[sessionId]
+├ ƒ /explore/search/autogen/[sessionId]
+├ ƒ /explore/search/copilot/[sessionId]
+├ ƒ /explore/search/research/[sessionId]
+├ ƒ /feishu-login
+├ ƒ /files
+├ ƒ /files/[id]
+├ ƒ /files/chat
+├ ƒ /files/folder/[id]
+├ ƒ /filings
+├ ƒ /filings/[id]
+├ ƒ /financials
+├ ƒ /financials/[id]
+├ ƒ /following
+├ ƒ /following/companies
+├ ƒ /following/mp
+├ ƒ /following/subscribe
+├ ƒ /following/subscribe/[follow_id]
+├ ƒ /following/subscribe/add
+├ ƒ /following/topics
+├ ƒ /following/topics/quickstart
+├ ƒ /global_research/[id]
+├ ƒ /global-research/[id]
+├ ƒ /hotspot
+├ ƒ /index-file/[file_id]
+├ ƒ /institutions/[id]/documents
+├ ƒ /instruction
+├ ƒ /integrations
+├ ƒ /integrations/api-keys
+├ ƒ /integrations/formula-docs
+├ ƒ /integrations/pricing
+├ ƒ /integrations/skills
+├ ƒ /integrations/usage
+├ ƒ /internal-testing-invitation
+├ ƒ /kb/files/my
+├ ƒ /kb/files/my/[fileId]
+├ ƒ /kb/files/my/chat
+├ ƒ /kb/files/my/folder/[folderId]
+├ ƒ /kb/files/shared
+├ ƒ /kb/files/shared/[fileId]
+├ ƒ /kb/files/shared/chat
+├ ƒ /kb/files/shared/folder/[folderId]
+├ ƒ /kb/files/shared/invite/[code]
+├ ƒ /knowledge
+├ ƒ /knowledge/[id]
+├ ƒ /knowledge/[id]/[folderId]
+├ ƒ /knowledge/files/[fileId]
+├ ƒ /knowledge/files/chat
+├ ƒ /legacy
+├ ƒ /login
+├ ƒ /manage/knowledge
+├ ƒ /manage/knowledge/[id]
+├ ƒ /manage/knowledge/[id]/[folderId]
+├ ƒ /manage/knowledge/files/[fileId]
+├ ƒ /manage/knowledge/files/chat
+├ ƒ /manage/logs
+├ ƒ /manage/organization
+├ ƒ /manage/role
+├ ƒ /mcp/callback
+├ ƒ /news
+├ ƒ /news/[id]
+├ ƒ /notifications
+├ ƒ /oauth/authorize
+├ ƒ /oauth/device
+├ ƒ /organizations/[id]/settings
+├ ƒ /pricing
+├ ƒ /pricing/archive
+├ ƒ /privacy-policy
+├ ƒ /professionals
+├ ƒ /professionals/[id]
+├ ƒ /professionals/[id]/contents/[contentId]
+├ ƒ /professionals/[id]/edit
+├ ƒ /professionals/[id]/sessions/[sessionId]
+├ ƒ /professionals/create
+├ ƒ /professionals/explore
+├ ƒ /reports
+├ ƒ /reports/[id]
+├ ƒ /reports/[id]/customize
+├ ƒ /reports/conversation/[id]
+├ ƒ /service-agreement
+├ ƒ /settings
+├ ƒ /settings/account
+├ ƒ /settings/connectors
+├ ƒ /settings/credits
+├ ƒ /settings/memory
+├ ƒ /settings/plan
+├ ƒ /settings/skills
+├ ƒ /share/artifact
+├ ƒ /share/artifact/[id]
+├ ƒ /share/chat/[id]
+├ ƒ /share/s/[token]
+├ ƒ /skills
+├ ƒ /slides
+├ ƒ /slides/[id]
+├ ƒ /social-media
+├ ƒ /social-media/[id]
+├ ƒ /tags/[id]
+├ ƒ /tasks
+├ ƒ /tasks/[id]
+├ ƒ /tasks/[id]/[record_id]
+├ ƒ /tasks/edit
+├ ƒ /threads
+├ ƒ /transcripts
+├ ƒ /transcripts/[id]
+├ ƒ /trial-apply
+├ ƒ /widgets
+├ ƒ /workflow
+├ ƒ /workflow/chat
+├ ƒ /workflow/chat_report
+├ ƒ /workflow/list
+├ ƒ /workflow/simple
+└ ƒ /workflow/v2
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+      516.23 real       283.79 user       164.36 sys
+          5049991168  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+            19111423  page reclaims
+                4970  page faults
+                   0  swaps
+                   0  block input operations
+                   3  block output operations
+                 559  messages sent
+                 460  messages received
+                   3  signals received
+              250836  voluntary context switches
+             6954921  involuntary context switches
+       3071837642636  instructions retired
+       1621142332212  cycles elapsed
+          9503531568  peak memory footprint

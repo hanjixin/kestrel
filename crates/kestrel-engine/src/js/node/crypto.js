@@ -130,7 +130,8 @@ export const constants = { RSA_PKCS1_PADDING: 1, RSA_NO_PADDING: 3, RSA_PKCS1_OA
 
 const algName = (a) => (typeof a === "string" ? a : a.name).toUpperCase();
 const hashName = (h) => String(typeof h === "string" ? h : h.name).toLowerCase().replace("-", "");
-class CryptoKey { constructor(type, algorithm, extractable, usages, raw) { this.type = type; this.algorithm = algorithm; this.extractable = extractable; this.usages = usages; this._raw = raw; } get [Symbol.toStringTag]() { return "CryptoKey"; } }
+const cryptoKeyToken = Symbol("CryptoKey");
+class CryptoKey { constructor(type, algorithm, extractable, usages, raw, token) { if (token !== cryptoKeyToken) throw Object.assign(new TypeError("Illegal constructor"), { code: "ERR_ILLEGAL_CONSTRUCTOR" }); this.type = type; this.algorithm = algorithm; this.extractable = extractable; this.usages = usages; this._raw = raw; } get [Symbol.toStringTag]() { return "CryptoKey"; } }
 const subtle = {
   async digest(algo, data) { return Buffer.from(ops.op_k_hash(hashName(algo), toUint8(data))).buffer; },
   async importKey(format, keyData, algorithm, extractable, usages) {
@@ -139,10 +140,10 @@ const subtle = {
     if (alg.hash) alg.hash = { name: typeof alg.hash === "string" ? alg.hash : alg.hash.name };
     const raw = toUint8(keyData);
     if (alg.name.toUpperCase().startsWith("AES")) alg.length = raw.length * 8;
-    return new CryptoKey("secret", alg, extractable, usages, new Uint8Array(raw));
+    return new CryptoKey("secret", alg, extractable, usages, new Uint8Array(raw), cryptoKeyToken);
   },
   async exportKey(format, key) { if (format !== "raw") throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.exportKey: only 'raw' is supported yet"); return key._raw.slice().buffer; },
-  async generateKey(algorithm, extractable, usages) { const alg = typeof algorithm === "string" ? { name: algorithm } : { ...algorithm }; const len = alg.length ? alg.length / 8 : 32; return new CryptoKey("secret", alg, extractable, usages, ops.op_k_random_bytes(len)); },
+  async generateKey(algorithm, extractable, usages) { const alg = typeof algorithm === "string" ? { name: algorithm } : { ...algorithm }; const len = alg.length ? alg.length / 8 : 32; return new CryptoKey("secret", alg, extractable, usages, ops.op_k_random_bytes(len), cryptoKeyToken); },
   async sign(algorithm, key, data) { if (algName(algorithm) !== "HMAC") throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.sign: only HMAC is supported yet"); return Buffer.from(ops.op_k_hmac(hashName(key.algorithm.hash), key._raw, toUint8(data))).buffer; },
   async verify(algorithm, key, signature, data) { const mac = Buffer.from(ops.op_k_hmac(hashName(key.algorithm.hash), key._raw, toUint8(data))); const sig = Buffer.from(toUint8(signature)); return mac.length === sig.length && timingSafeEqual(mac, sig); },
   async encrypt(algorithm, key, data) {
@@ -171,7 +172,21 @@ const subtle = {
   async unwrapKey() { throw nodeError("ERR_METHOD_NOT_IMPLEMENTED", "subtle.unwrapKey is not supported yet"); },
 };
 export { CryptoKey };
-export const webcrypto = { subtle, getRandomValues, randomUUID, get [Symbol.toStringTag]() { return "Crypto"; } };
+export class SubtleCrypto {
+  constructor() { throw Object.assign(new TypeError("Illegal constructor"), { code: "ERR_ILLEGAL_CONSTRUCTOR" }); }
+  get [Symbol.toStringTag]() { return "SubtleCrypto"; }
+}
+Object.defineProperties(SubtleCrypto.prototype, Object.getOwnPropertyDescriptors(subtle));
+for (const name of Object.keys(subtle)) delete subtle[name];
+Object.setPrototypeOf(subtle, SubtleCrypto.prototype);
+export class Crypto {
+  constructor() { throw Object.assign(new TypeError("Illegal constructor"), { code: "ERR_ILLEGAL_CONSTRUCTOR" }); }
+  get subtle() { return subtle; }
+  getRandomValues(array) { return getRandomValues(array); }
+  randomUUID() { return randomUUID(); }
+  get [Symbol.toStringTag]() { return "Crypto"; }
+}
+export const webcrypto = Object.create(Crypto.prototype);
 export { subtle };
 
 const crypto = { createHash, createHmac, hash, getHashes, getCiphers, getCurves, randomBytes, randomFillSync, randomFill, randomUUID, randomInt, getRandomValues, timingSafeEqual, pbkdf2Sync, pbkdf2, scryptSync, scrypt, hkdfSync, hkdf, createCipheriv, createDecipheriv, Cipheriv, Decipheriv, createSign, createVerify, Sign, Verify, sign, verify, generateKeyPairSync, generateKeyPair, generateKeySync, createSecretKey, createPrivateKey, createPublicKey, KeyObject, getCipherInfo, constants, webcrypto, subtle, CryptoKey, Hash, Hmac };

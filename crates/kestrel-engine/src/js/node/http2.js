@@ -6,10 +6,9 @@ import { EventEmitter } from "ext:kestrel/node/events.js";
 import { Duplex } from "ext:kestrel/node/stream.js";
 import { Buffer } from "ext:kestrel/node/buffer.js";
 import { IncomingMessage, ServerResponse, STATUS_CODES } from "ext:kestrel/node/http.js";
-import { nodeError } from "ext:kestrel/internal.js";
+import { ops, nodeError } from "ext:kestrel/internal.js";
 import fs from "ext:kestrel/node/fs.js";
 
-const ops = Deno.core.ops;
 export const sensitiveHeaders = Symbol.for("nodejs.http2.sensitiveHeaders");
 
 const HTTP_STATUS = {};
